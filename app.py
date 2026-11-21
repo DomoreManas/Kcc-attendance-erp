@@ -893,9 +893,21 @@ class HybridConnection:
 def get_connection():
     db_url = get_cloud_db_url()
     if db_url:
+        import time
         import psycopg2
-        raw = psycopg2.connect(db_url)
-        return HybridConnection(raw, is_pg=True)
+
+        clean_url = db_url.strip()
+        last_err = None
+        for attempt in range(2):
+            try:
+                raw = psycopg2.connect(clean_url, connect_timeout=15)
+                return HybridConnection(raw, is_pg=True)
+            except psycopg2.OperationalError as exc:
+                last_err = exc
+                if attempt == 0:
+                    time.sleep(1.5)
+                else:
+                    raise last_err
     raw = sqlite3.connect(DB_NAME, check_same_thread=False)
     raw.execute("PRAGMA foreign_keys = ON")
     return HybridConnection(raw, is_pg=False)
