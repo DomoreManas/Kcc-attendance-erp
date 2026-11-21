@@ -2,6 +2,7 @@ import base64
 import calendar
 from datetime import date, datetime, timedelta
 import hashlib
+import io
 import math
 import os
 import random
@@ -330,7 +331,7 @@ html body .stApp .block-container {{
     box-shadow: 0 8px 20px {btn_hover_shadow} !important;
 }}
 
-/* Full-Surface Interactive Popover Button */
+/* Full-Surface Interactive Popover Buttons (Phone QR & Change Theme) */
 html body [data-testid="stPopover"],
 html body [data-baseweb="popover"],
 html body [data-baseweb="popover"] > div {{
@@ -346,9 +347,9 @@ html body [data-testid="stBaseButton-secondary"] {{
     min-height: 44px !important;
     border-radius: 999px !important;
     border: 1.5px solid var(--accent-color, #A61C20) !important;
-    padding: 0.48rem 1.25rem !important;
+    padding: 0.48rem 1.15rem !important;
     font-weight: 700 !important;
-    font-size: 0.94rem !important;
+    font-size: 0.92rem !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -395,7 +396,7 @@ html body [data-baseweb="popover"] button * {{
     pointer-events: none !important;
 }}
 
-/* Theme Dropdown Menu Surface */
+/* Popover Dropdown Surface (Theme Selector & Phone QR) */
 html body [data-testid="stPopoverBody"],
 html body [data-testid="stPopoverBody"] > div,
 html body [data-testid="stPopoverBody"] [data-testid="stVerticalBlock"],
@@ -408,7 +409,7 @@ html body [data-baseweb="popover"] [data-baseweb="menu"] {{
 html body [data-testid="stPopoverBody"] {{
     border: 1.5px solid var(--accent-color, #A61C20) !important;
     border-radius: 16px !important;
-    padding: 10px !important;
+    padding: 12px !important;
     box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28) !important;
 }}
 
@@ -532,7 +533,9 @@ html body .stApp [data-testid="stNumberInput"] > div > div,
 html body .stApp [data-testid="stNumberInput"] input,
 html body .stApp [data-testid="stNumberInput"] button,
 html body .stApp [data-testid="stExpander"] details,
-html body .stApp [data-testid="stExpander"] summary {{
+html body .stApp [data-testid="stExpander"] summary,
+html body [data-testid="stPopoverBody"] [data-baseweb="input"] > div,
+html body [data-testid="stPopoverBody"] [data-testid="stTextInputRootElement"] > div {{
     border-radius: 14px !important;
     border: 1px solid {card_border} !important;
     background: {input_bg} !important;
@@ -553,7 +556,8 @@ html body .stApp [data-testid="stNumberInput"] input,
 html body .stApp [data-testid="stNumberInput"] button svg,
 html body .stApp [data-testid="stExpander"] summary,
 html body .stApp [data-testid="stExpander"] summary p,
-html body .stApp [data-testid="stExpander"] summary svg {{
+html body .stApp [data-testid="stExpander"] summary svg,
+html body [data-testid="stPopoverBody"] input {{
     background-color: transparent !important;
     color: {text_main} !important;
     -webkit-text-fill-color: {text_main} !important;
@@ -941,9 +945,39 @@ def apply_selected_theme(chosen_code):
     st.rerun()
 
 
-# -------------------- TOP-LEFT KCC LOGO & TOP-RIGHT THEME DROPDOWN --------------------
+# -------------------- TEACHER / STUDENT PHONE QR POPOVER --------------------
+def render_phone_qr_popover():
+    with st.popover("📱 Phone QR", width="stretch"):
+        st.caption("Scan with a phone camera to open the ERP on mobile.")
+        try:
+            default_url = (
+                str(st.secrets["APP_URL"]).strip()
+                if ("APP_URL" in st.secrets and str(st.secrets["APP_URL"]).strip())
+                else "https://kcc-smart-aktu-erp.streamlit.app"
+            )
+        except Exception:
+            default_url = "https://kcc-smart-aktu-erp.streamlit.app"
+
+        target_url = st.text_input("Live Portal URL", value=default_url, key="phone_qr_url_input").strip()
+        if target_url:
+            try:
+                import qrcode
+                qr = qrcode.QRCode(version=1, box_size=6, border=2)
+                qr.add_data(target_url)
+                qr.make(fit=True)
+                qr_img = qr.make_image(fill_color="#8B171B", back_color="#FFFFFF")
+                buf = io.BytesIO()
+                qr_img.save(buf, format="PNG")
+                st.image(buf.getvalue(), caption="Teacher / Student Mobile Access", width=180)
+            except ImportError:
+                st.info("Install `qrcode` and `pillow` (`pip install qrcode pillow`) to render the scannable QR image.")
+        else:
+            st.warning("Enter your live Streamlit URL to generate a QR code.")
+
+
+# -------------------- TOP-LEFT KCC LOGO & TOP-RIGHT PHONE QR + THEME DROPDOWN --------------------
 def render_top_header_bar():
-    col_logo, _, col_theme = st.columns([2.2, 4.3, 1.45])
+    col_logo, _, col_qr, col_theme = st.columns([2.2, 3.1, 1.15, 1.45])
 
     with col_logo:
         logo_file = next((f for f in ["kcc img.png", "kcc_logo.png", "kcc.png"] if os.path.exists(f)), None)
@@ -972,6 +1006,10 @@ def render_top_header_bar():
                 """,
                 unsafe_allow_html=True
             )
+
+    with col_qr:
+        st.markdown('<span class="theme-btn-tag"></span>', unsafe_allow_html=True)
+        render_phone_qr_popover()
 
     with col_theme:
         st.markdown('<span class="theme-btn-tag"></span>', unsafe_allow_html=True)
@@ -1010,7 +1048,8 @@ def init_db():
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute("""
+    ddl_statements = [
+        """
         CREATE TABLE IF NOT EXISTS admin_settings (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             username TEXT NOT NULL,
@@ -1019,18 +1058,16 @@ def init_db():
             recovery_pin TEXT NOT NULL,
             theme_pref TEXT NOT NULL DEFAULT 'kcc'
         )
-    """)
-
-    cur.execute("""
+        """,
+        """
         CREATE TABLE IF NOT EXISTS subject_catalog (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             code TEXT UNIQUE NOT NULL,
             name TEXT NOT NULL,
             credits REAL NOT NULL
         )
-    """)
-
-    cur.execute("""
+        """,
+        """
         CREATE TABLE IF NOT EXISTS students (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             roll_no TEXT UNIQUE NOT NULL,
@@ -1047,9 +1084,8 @@ def init_db():
             photo_blob BLOB,
             theme_pref TEXT NOT NULL DEFAULT 'kcc'
         )
-    """)
-
-    cur.execute("""
+        """,
+        """
         CREATE TABLE IF NOT EXISTS student_subjects (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             student_id INTEGER NOT NULL,
@@ -1061,9 +1097,8 @@ def init_db():
             FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
             FOREIGN KEY (subject_id) REFERENCES subject_catalog(id) ON DELETE CASCADE
         )
-    """)
-
-    cur.execute("""
+        """,
+        """
         CREATE TABLE IF NOT EXISTS attendance_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             record_id INTEGER NOT NULL,
@@ -1071,9 +1106,8 @@ def init_db():
             status TEXT NOT NULL,
             FOREIGN KEY (record_id) REFERENCES student_subjects(id) ON DELETE CASCADE
         )
-    """)
-
-    cur.execute("""
+        """,
+        """
         CREATE TABLE IF NOT EXISTS self_attendance_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             record_id INTEGER NOT NULL,
@@ -1081,9 +1115,8 @@ def init_db():
             status TEXT NOT NULL,
             FOREIGN KEY (record_id) REFERENCES student_subjects(id) ON DELETE CASCADE
         )
-    """)
-
-    cur.execute("""
+        """,
+        """
         CREATE TABLE IF NOT EXISTS faculty (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             faculty_code TEXT UNIQUE NOT NULL,
@@ -1095,9 +1128,8 @@ def init_db():
             theme_pref TEXT NOT NULL DEFAULT 'kcc',
             created_at TEXT NOT NULL DEFAULT '2026-08-01'
         )
-    """)
-
-    cur.execute("""
+        """,
+        """
         CREATE TABLE IF NOT EXISTS faculty_assignments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             faculty_id INTEGER NOT NULL,
@@ -1108,12 +1140,12 @@ def init_db():
             FOREIGN KEY (faculty_id) REFERENCES faculty(id) ON DELETE CASCADE,
             FOREIGN KEY (subject_id) REFERENCES subject_catalog(id) ON DELETE CASCADE
         )
-    """)
-    conn.commit()
+        """,
+    ]
 
-    for tbl in ["admin_settings", "students", "faculty"]:
+    for stmt in ddl_statements:
         try:
-            cur.execute(f"ALTER TABLE {tbl} ADD COLUMN theme_pref TEXT NOT NULL DEFAULT 'kcc'")
+            cur.execute(stmt)
             conn.commit()
         except Exception:
             if conn.is_pg:
