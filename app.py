@@ -94,6 +94,7 @@ if theme_mode == "dark":
     table_bg = "#091826"
     table_alt_bg = "#0E2235"
     table_hdr_bg = "#0F2942"
+    alert_bg = "#0B1E30"
     df_filter = "none"
     is_light_ui = False
 
@@ -145,6 +146,7 @@ elif theme_mode == "light":
     table_bg = "#F8FAFC"
     table_alt_bg = "#EEF2F6"
     table_hdr_bg = "#E2E8F0"
+    alert_bg = "#E0F2FE"
     df_filter = "none"
     is_light_ui = True
 
@@ -195,6 +197,7 @@ else:
     table_bg = "#FFFFFF"
     table_alt_bg = "#FDF6F6"
     table_hdr_bg = "#F9EBEB"
+    alert_bg = "#FEF2F2"
     df_filter = "none"
     is_light_ui = True
 
@@ -226,6 +229,22 @@ html body .stApp {{
 
 [data-testid="stHeader"] {{
     background: transparent !important;
+}}
+
+/* Alert / Info / Warning / Error Boxes Theme-Aware */
+html body .stApp [data-testid="stAlert"],
+html body .stApp [data-testid="stNotification"],
+html body .stApp .stAlert > div {{
+    background: {alert_bg} !important;
+    background-color: {alert_bg} !important;
+    color: {text_main} !important;
+    border: 1px solid {card_border} !important;
+    border-radius: 12px !important;
+}}
+
+html body .stApp [data-testid="stAlert"] *,
+html body .stApp [data-testid="stNotification"] * {{
+    color: {text_main} !important;
 }}
 
 /* Sidebar Collapse / Expand Controls High Visibility */
@@ -460,7 +479,6 @@ html body [data-testid="stPopoverBody"] button:hover {{
     letter-spacing: 0.2px !important;
 }}
 
-/* Clear stale focus glow when not hovered on non-active tabs */
 [data-testid="stColumn"]:has(.nav-pill-tag):not(:has(.nav-active)) button:focus:not(:hover),
 [data-testid="stColumn"]:has(.nav-pill-tag):not(:has(.nav-active)) button:active:not(:hover) {{
     background: {btn_bg} !important;
@@ -474,7 +492,6 @@ html body [data-testid="stPopoverBody"] button:hover {{
     color: {btn_text} !important;
 }}
 
-/* Hover glow for non-active top tabs */
 [data-testid="stColumn"]:has(.nav-pill-tag):not(:has(.nav-active)) button:hover {{
     background: {btn_hover_bg} !important;
     background-color: {btn_hover_bg} !important;
@@ -482,7 +499,6 @@ html body [data-testid="stPopoverBody"] button:hover {{
     box-shadow: 0 0 16px {btn_hover_shadow} !important;
 }}
 
-/* Active Selected Top Pill Highlight & Glow (Always Locked on .nav-active) */
 [data-testid="stColumn"]:has(.nav-active) button,
 [data-testid="stColumn"]:has(.nav-active) button:hover,
 [data-testid="stColumn"]:has(.nav-active) button:focus,
@@ -631,7 +647,7 @@ table.erp-styled-table tbody td {{
     overflow: hidden !important;
 }}
 
-/* Attendance Bar Cards (Green Tint for Safe, Soft Red Tint for Shortage + Glow) */
+/* Attendance Bar Cards */
 .att-card-green {{
     width: 100%;
     border-radius: 16px;
@@ -965,10 +981,10 @@ def render_phone_qr_popover():
             default_url = (
                 str(st.secrets["APP_URL"]).strip()
                 if ("APP_URL" in st.secrets and str(st.secrets["APP_URL"]).strip())
-                else "https://kcc-smart-aktu-erp.streamlit.app"
+                else "https://kcc-attendance-erp-bvt8a4ffjzbfriatjoytm3.streamlit.app"
             )
         except Exception:
-            default_url = "https://kcc-smart-aktu-erp.streamlit.app"
+            default_url = "https://kcc-attendance-erp-bvt8a4ffjzbfriatjoytm3.streamlit.app"
 
         target_url = st.text_input("Live Portal URL", value=default_url, key="phone_qr_url_input").strip()
         if target_url:
@@ -1163,6 +1179,14 @@ def init_db():
             if conn.is_pg:
                 conn.raw_conn.rollback()
 
+    for tbl in ["admin_settings", "students", "faculty"]:
+        try:
+            cur.execute(f"ALTER TABLE {tbl} ADD COLUMN theme_pref TEXT NOT NULL DEFAULT 'kcc'")
+            conn.commit()
+        except Exception:
+            if conn.is_pg:
+                conn.raw_conn.rollback()
+
     try:
         cur.execute("ALTER TABLE faculty ADD COLUMN created_at TEXT NOT NULL DEFAULT '2026-08-01'")
         conn.commit()
@@ -1179,11 +1203,15 @@ def init_db():
 
     cur.execute("SELECT COUNT(*) FROM admin_settings")
     if cur.fetchone()[0] == 0:
-        cur.execute("""
-            INSERT INTO admin_settings (id, username, full_name, password, recovery_pin, theme_pref)
-            VALUES (1, 'admin', 'KCC ERP Administrator', ?, '9999', 'kcc')
-        """, (hash_password("admin123"),))
-        conn.commit()
+        try:
+            cur.execute("""
+                INSERT INTO admin_settings (id, username, full_name, password, recovery_pin, theme_pref)
+                VALUES (1, 'admin', 'KCC ERP Administrator', ?, '9999', 'kcc')
+            """, (hash_password("admin123"),))
+            conn.commit()
+        except Exception:
+            if conn.is_pg:
+                conn.raw_conn.rollback()
 
     cur.execute("SELECT COUNT(*) FROM subject_catalog")
     if cur.fetchone()[0] == 0:
@@ -1196,11 +1224,13 @@ def init_db():
             ("BCS351", "Data Structures Lab", 1.0),
             ("BCS352", "COA Lab", 1.0),
         ]
-        cur.executemany(
-            "INSERT INTO subject_catalog (code, name, credits) VALUES (?, ?, ?)",
-            subjects_seed
-        )
-        conn.commit()
+        for s_code, s_name, s_cred in subjects_seed:
+            try:
+                cur.execute("INSERT INTO subject_catalog (code, name, credits) VALUES (?, ?, ?)", (s_code, s_name, s_cred))
+                conn.commit()
+            except Exception:
+                if conn.is_pg:
+                    conn.raw_conn.rollback()
 
     cur.execute("SELECT COUNT(*) FROM students")
     if cur.fetchone()[0] == 0:
@@ -1258,73 +1288,91 @@ def init_db():
         }
 
         rng = random.Random(42)
-        students_seed = []
         idx_counter = 0
         for sec_name, stu_list in sections_roster.items():
             for r_no, s_name in stu_list:
                 prev_cg = 8.35 if r_no == "2504920100346" else round(rng.uniform(6.95, 9.15), 2)
                 doodle = doodle_list[0] if r_no == "2504920100346" else doodle_list[idx_counter % len(doodle_list)]
-                students_seed.append((
-                    r_no, default_st_hash, "1234", s_name, "B.Tech CSE", sec_name,
-                    "3rd Semester", 40.0, prev_cg, "Pre-built Doodle", doodle, None, "kcc"
-                ))
+                try:
+                    cur.execute("""
+                        INSERT INTO students (roll_no, password, recovery_pin, name, branch, section, semester, prev_credits, prev_cgpa, avatar_mode, doodle_name, photo_blob, theme_pref)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        r_no, default_st_hash, "1234", s_name, "B.Tech CSE", sec_name,
+                        "3rd Semester", 40.0, prev_cg, "Pre-built Doodle", doodle, None, "kcc"
+                    ))
+                    conn.commit()
+                except Exception:
+                    if conn.is_pg:
+                        conn.raw_conn.rollback()
                 idx_counter += 1
 
-        cur.executemany("""
-            INSERT INTO students (roll_no, password, recovery_pin, name, branch, section, semester, prev_credits, prev_cgpa, avatar_mode, doodle_name, photo_blob, theme_pref)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, students_seed)
-        conn.commit()
+    # Self-healing check: ensure every student has rows in student_subjects for every subject_catalog entry
+    cur.execute("SELECT id, roll_no FROM students")
+    all_students = cur.fetchall()
+    cur.execute("SELECT id, code FROM subject_catalog ORDER BY code")
+    all_subjects = cur.fetchall()
 
-        cur.execute("SELECT id, roll_no FROM students")
-        all_students = cur.fetchall()
-        cur.execute("SELECT id, code FROM subject_catalog ORDER BY code")
-        all_subjects = cur.fetchall()
+    manas_preset = [
+        (26, 30, "A (80-89)"),
+        (21, 30, "B+ (70-79)"),
+        (24, 28, "A+ (90-100)"),
+        (19, 28, "B (60-69)"),
+        (18, 20, "A+ (90-100)"),
+        (11, 12, "A (80-89)"),
+        (9, 12, "B+ (70-79)"),
+    ]
+    grade_choices = ["A+ (90-100)", "A (80-89)", "B+ (70-79)", "B (60-69)", "C (50-59)"]
+    rng_fix = random.Random(42)
 
-        manas_preset = [
-            (26, 30, "A (80-89)"),
-            (21, 30, "B+ (70-79)"),
-            (24, 28, "A+ (90-100)"),
-            (19, 28, "B (60-69)"),
-            (18, 20, "A+ (90-100)"),
-            (11, 12, "A (80-89)"),
-            (9, 12, "B+ (70-79)"),
-        ]
-        grade_choices = ["A+ (90-100)", "A (80-89)", "B+ (70-79)", "B (60-69)", "C (50-59)"]
-
-        for st_id, r_no in all_students:
-            for s_idx, (sub_id, code) in enumerate(all_subjects):
+    for st_id, r_no in all_students:
+        for s_idx, (sub_id, code) in enumerate(all_subjects):
+            cur.execute("SELECT id FROM student_subjects WHERE student_id = ? AND subject_id = ?", (st_id, sub_id))
+            existing_ss = cur.fetchone()
+            if not existing_ss:
                 if r_no == "2504920100346":
                     att, tot, grd = manas_preset[s_idx % len(manas_preset)]
                 else:
                     tot = 12 if code in ("BCS351", "BCS352") else (20 if code == "BCC302" else 28)
-                    att = rng.randint(int(tot * 0.58), tot)
-                    grd = rng.choice(grade_choices)
-                cur.execute(
-                    "INSERT INTO student_subjects (student_id, subject_id, attended, total, grade) VALUES (?, ?, ?, ?, ?)",
-                    (st_id, sub_id, att, tot, grd)
-                )
-                seed_logs_for_record(cur, cur.lastrowid, att, tot)
-        conn.commit()
+                    att = rng_fix.randint(int(tot * 0.58), tot)
+                    grd = rng_fix.choice(grade_choices)
+                try:
+                    cur.execute(
+                        "INSERT INTO student_subjects (student_id, subject_id, attended, total, grade) VALUES (?, ?, ?, ?, ?)",
+                        (st_id, sub_id, att, tot, grd)
+                    )
+                    new_rec_id = cur.lastrowid
+                    if new_rec_id:
+                        seed_logs_for_record(cur, new_rec_id, att, tot)
+                    conn.commit()
+                except Exception:
+                    if conn.is_pg:
+                        conn.raw_conn.rollback()
 
     cur.execute("SELECT COUNT(*) FROM faculty")
     if cur.fetchone()[0] == 0:
         default_fac_hash = hash_password("faculty123")
-        cur.executemany(
-            "INSERT INTO faculty (faculty_code, password, recovery_pin, name, department, designation, theme_pref, created_at) VALUES (?, ?, ?, ?, ?, ?, 'kcc', '2026-08-01')",
-            [
-                ("FAC001", default_fac_hash, "1234", "Mr. Vishal", "Computer Science & Engineering", "Assistant Professor (Python)"),
-                ("FAC002", default_fac_hash, "1234", "Arya Devi", "Computer Science & Engineering", "Assistant Professor (COA)"),
-                ("FAC003", default_fac_hash, "1234", "Mr. Satyam", "Computer Science & Engineering", "Assistant Professor (DSTL)"),
-            ]
-        )
-        conn.commit()
+        for f_code, f_name, f_desig in [
+            ("FAC001", "Mr. Vishal", "Computer Science & Engineering", "Assistant Professor (Python)") if False else ("FAC001", "Mr. Vishal", "Assistant Professor (Python)"),
+            ("FAC002", "Arya Devi", "Assistant Professor (COA)"),
+            ("FAC003", "Mr. Satyam", "Assistant Professor (DSTL)"),
+        ]:
+            try:
+                cur.execute(
+                    "INSERT INTO faculty (faculty_code, password, recovery_pin, name, department, designation, theme_pref, created_at) VALUES (?, ?, ?, ?, 'Computer Science & Engineering', ?, 'kcc', '2026-08-01')",
+                    (f_code, default_fac_hash, "1234", f_name, f_desig)
+                )
+                conn.commit()
+            except Exception:
+                if conn.is_pg:
+                    conn.raw_conn.rollback()
 
-        cur.execute("SELECT id, faculty_code FROM faculty")
-        fac_map = {code: fid for fid, code in cur.fetchall()}
-        cur.execute("SELECT id, code FROM subject_catalog")
-        sub_map = {code: sid for sid, code in cur.fetchall()}
+    cur.execute("SELECT id, faculty_code FROM faculty")
+    fac_map = {code: fid for fid, code in cur.fetchall()}
+    cur.execute("SELECT id, code FROM subject_catalog")
+    sub_map = {code: sid for sid, code in cur.fetchall()}
 
+    if all(k in fac_map for k in ("FAC001", "FAC002", "FAC003")) and all(k in sub_map for k in ("BCC302", "BCS302", "BCS303")):
         assignments = [
             (fac_map["FAC001"], "Section B-3", sub_map["BCC302"], "2026-08-01"),
             (fac_map["FAC001"], "Section B-4", sub_map["BCC302"], "2026-08-01"),
@@ -1335,11 +1383,21 @@ def init_db():
             (fac_map["FAC003"], "Section B-3", sub_map["BCS303"], "2026-08-01"),
             (fac_map["FAC003"], "Section B-4", sub_map["BCS303"], "2026-08-01"),
         ]
-        cur.executemany(
-            "INSERT INTO faculty_assignments (faculty_id, section, subject_id, appointed_at) VALUES (?, ?, ?, ?)",
-            assignments
-        )
-        conn.commit()
+        for fid, sec, sid, appt_dt in assignments:
+            cur.execute(
+                "SELECT id FROM faculty_assignments WHERE faculty_id = ? AND section = ? AND subject_id = ?",
+                (fid, sec, sid)
+            )
+            if not cur.fetchone():
+                try:
+                    cur.execute(
+                        "INSERT INTO faculty_assignments (faculty_id, section, subject_id, appointed_at) VALUES (?, ?, ?, ?)",
+                        (fid, sec, sid, appt_dt)
+                    )
+                    conn.commit()
+                except Exception:
+                    if conn.is_pg:
+                        conn.raw_conn.rollback()
 
     conn.close()
 
@@ -2653,7 +2711,7 @@ elif role == "Admin":
         st.subheader("Student Directory & Enrollment (Sections B-2, B-3, B-4, B-6)")
         sec_view = st.selectbox("Filter Roster by Section", ["All Sections", "Section B-2", "Section B-3", "Section B-4", "Section B-6"], key="adm_st_sec_filter")
         students_df = read_df(
-            "SELECT id, roll_no AS 'Roll No', name AS 'Name', branch AS 'Branch', section AS 'Section', '•••••••• (SHA-256)' AS 'Security', recovery_pin AS 'Recovery PIN' FROM students ORDER BY section, roll_no",
+            'SELECT id, roll_no AS "Roll No", name AS "Name", branch AS "Branch", section AS "Section", \'•••••••• (SHA-256)\' AS "Security", recovery_pin AS "Recovery PIN" FROM students ORDER BY section, roll_no',
             conn
         )
         if sec_view != "All Sections":
@@ -2735,14 +2793,14 @@ elif role == "Admin":
 
     elif st.session_state.adm_page == "faculty":
         st.subheader("Faculty Roster & Section Appointments")
-        fac_df = read_df("SELECT id, faculty_code AS 'Faculty ID', name AS 'Name', department AS 'Department', designation AS 'Designation', created_at AS 'Joined Date', '•••••••• (SHA-256)' AS 'Security', recovery_pin AS 'Recovery PIN' FROM faculty", conn)
+        fac_df = read_df('SELECT id, faculty_code AS "Faculty ID", name AS "Name", department AS "Department", designation AS "Designation", created_at AS "Joined Date", \'•••••••• (SHA-256)\' AS "Security", recovery_pin AS "Recovery PIN" FROM faculty', conn)
         st.markdown(render_clean_table(fac_df.drop(columns=["id"])), unsafe_allow_html=True)
 
         st.markdown("##### Current Section & Subject Appointments")
         assign_view = read_df("""
-            SELECT fa.id, f.faculty_code AS 'Faculty ID', f.name AS 'Faculty Name',
-                   fa.section AS 'Appointed Section', sc.code AS 'Subject Code', sc.name AS 'Subject Name',
-                   fa.appointed_at AS 'Appointed Date'
+            SELECT fa.id, f.faculty_code AS "Faculty ID", f.name AS "Faculty Name",
+                   fa.section AS "Appointed Section", sc.code AS "Subject Code", sc.name AS "Subject Name",
+                   fa.appointed_at AS "Appointed Date"
             FROM faculty_assignments fa
             JOIN faculty f ON fa.faculty_id = f.id
             JOIN subject_catalog sc ON fa.subject_id = sc.id
@@ -2840,7 +2898,7 @@ elif role == "Admin":
 
     elif st.session_state.adm_page == "subjects":
         st.subheader("Master AKTU Subject Catalog")
-        cat_df = read_df("SELECT id, code AS 'Code', name AS 'Subject Name', credits AS 'Credits' FROM subject_catalog ORDER BY code", conn)
+        cat_df = read_df('SELECT id, code AS "Code", name AS "Subject Name", credits AS "Credits" FROM subject_catalog ORDER BY code', conn)
         st.markdown(render_clean_table(cat_df.drop(columns=["id"])), unsafe_allow_html=True)
 
         st.divider()
