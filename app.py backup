@@ -1,0 +1,970 @@
+import base64
+import calendar
+from datetime import date, datetime, timedelta
+import math
+import sqlite3
+import pandas as pd
+import streamlit as st
+
+# -------------------- PAGE CONFIGURATION --------------------
+st.set_page_config(
+    page_title="AKTU Smart Academic Manager",
+    page_icon="🎓",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+if "nav_tick" not in st.session_state:
+    st.session_state.nav_tick = 0
+
+nav_tick = st.session_state.nav_tick
+
+# -------------------- CUSTOM UI, WIDE SPACING & SUBTLE TAB FADE --------------------
+st.markdown(f"""
+<style>
+/* Spread out main content across the full screen width */
+html body .stApp .block-container {{
+    max-width: 98% !important;
+    padding-top: 2rem !important;
+    padding-left: 1.8rem !important;
+    padding-right: 1.8rem !important;
+    padding-bottom: 2rem !important;
+}}
+
+/* Subtle Fade-In Animation (Only triggers when top 3 tabs are switched) */
+@keyframes subtleTabFade_{nav_tick} {{
+    0% {{
+        opacity: 0.15;
+    }}
+    100% {{
+        opacity: 1;
+    }}
+}}
+
+/* Apply Subtle Fade-In Only on Top Tab Switches */
+[data-testid="stMainBlockContainer"] [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:nth-child(n+5),
+[data-testid="stMainBlockContainer"] [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:nth-child(n+5) {{
+    animation: subtleTabFade_{nav_tick} 0.35s ease-in-out both;
+}}
+
+/* Default Clickable Buttons (Pill Shape + Pop-up + Blue Glow Shadow) */
+.stButton button, .stFormSubmitButton button {{
+    border-radius: 999px !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    padding: 0.55rem 1.35rem !important;
+    font-weight: 600 !important;
+    background: rgba(255, 255, 255, 0.07) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
+    transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+                box-shadow 0.24s ease,
+                background 0.24s ease,
+                border-color 0.24s ease !important;
+}}
+
+.stButton button:hover, .stFormSubmitButton button:hover {{
+    transform: translateY(-4px) scale(1.03) !important;
+    background: rgba(79, 139, 249, 0.22) !important;
+    border-color: rgba(79, 139, 249, 0.55) !important;
+    box-shadow: 0 10px 24px rgba(79, 139, 249, 0.45) !important;
+}}
+
+/* Hide invisible tag containers so they take 0 space */
+[data-testid="stElementContainer"]:has(.tag-present),
+[data-testid="stElementContainer"]:has(.tag-absent),
+[data-testid="stElementContainer"]:has(.tag-dates),
+[data-testid="stElementContainer"]:has(.nav-pill-tag),
+[data-testid="stElementContainer"]:has(.nav-active) {{
+    display: none !important;
+}}
+
+/* Top 3 Pill Navigation Buttons (Bigger Height & Full Text) */
+[data-testid="stColumn"]:has(.nav-pill-tag) button {{
+    min-height: 54px !important;
+    padding: 14px 22px !important;
+    margin-bottom: 10px !important;
+}}
+
+[data-testid="stColumn"]:has(.nav-pill-tag) button p {{
+    font-size: 1.08rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.2px !important;
+}}
+
+/* Active Selected Top Pill Highlight (Smooth Fade Transition) */
+[data-testid="stColumn"]:has(.nav-active) button {{
+    background: linear-gradient(135deg, #4F8BF9 0%, #2563EB 100%) !important;
+    border-color: rgba(147, 197, 253, 0.65) !important;
+    box-shadow: 0 8px 24px rgba(79, 139, 249, 0.58) !important;
+    transition: background 0.3s ease, box-shadow 0.3s ease !important;
+}}
+
+[data-testid="stColumn"]:has(.nav-active) button p {{
+    color: #FFFFFF !important;
+}}
+
+/* Per-Subject PRESENT Button: Green Glow + Subtle Blue Undertone */
+[data-testid="stColumn"]:has(.tag-present) button:hover {{
+    transform: translateY(-4px) scale(1.03) !important;
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.28) 0%, rgba(79, 139, 249, 0.18) 100%) !important;
+    border-color: rgba(34, 197, 94, 0.55) !important;
+    box-shadow: 0 10px 22px rgba(34, 197, 94, 0.45), 0 0 14px rgba(79, 139, 249, 0.32) !important;
+}}
+
+/* Per-Subject ABSENT Button: Red Glow + Subtle Blue Undertone */
+[data-testid="stColumn"]:has(.tag-absent) button:hover {{
+    transform: translateY(-4px) scale(1.03) !important;
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.28) 0%, rgba(79, 139, 249, 0.18) 100%) !important;
+    border-color: rgba(239, 68, 68, 0.55) !important;
+    box-shadow: 0 10px 22px rgba(239, 68, 68, 0.45), 0 0 14px rgba(79, 139, 249, 0.32) !important;
+}}
+
+/* Calendar View Toggle Button */
+[data-testid="stColumn"]:has(.tag-dates) button:hover {{
+    transform: translateY(-4px) scale(1.03) !important;
+    background: linear-gradient(135deg, rgba(79, 139, 249, 0.28) 0%, rgba(168, 85, 247, 0.22) 100%) !important;
+    border-color: rgba(147, 197, 253, 0.65) !important;
+    box-shadow: 0 10px 22px rgba(79, 139, 249, 0.48) !important;
+}}
+
+/* Dropdowns & Sidebar Expander Hover */
+[data-baseweb="select"] > div,
+[data-testid="stExpander"] details {{
+    border-radius: 14px !important;
+    border: none !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+    transition: transform 0.22s ease, box-shadow 0.22s ease !important;
+}}
+
+[data-baseweb="select"] > div:hover,
+[data-testid="stExpander"] details:hover {{
+    transform: translateY(-3px) !important;
+    box-shadow: 0 8px 20px rgba(79, 139, 249, 0.35) !important;
+}}
+
+/* Attendance Bar Cards (Green & Red Pop-Up + Matching Background & Glow) */
+.att-card-green, .att-card-red {{
+    width: 100%;
+    border-radius: 16px;
+    padding: 14px 18px;
+    margin-bottom: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    box-sizing: border-box;
+    transition: transform 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+}}
+
+.att-card-green:hover {{
+    transform: translateY(-4px) scale(1.008);
+    background: rgba(34, 197, 94, 0.16);
+    box-shadow: 0 10px 26px rgba(34, 197, 94, 0.38);
+}}
+
+.att-card-red:hover {{
+    transform: translateY(-4px) scale(1.008);
+    background: rgba(239, 68, 68, 0.16);
+    box-shadow: 0 10px 26px rgba(239, 68, 68, 0.38);
+}}
+
+/* Static Calendar Drawer (No Pop-In Animation) */
+.cal-drawer-wrapper {{
+    border-radius: 18px;
+    padding: 18px 20px;
+    margin-top: 8px;
+    margin-bottom: 14px;
+    background: rgba(17, 24, 39, 0.72);
+    border: 1px solid rgba(79, 139, 249, 0.35);
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.42);
+}}
+
+.cal-months-flex {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    margin-top: 12px;
+}}
+
+.cal-month-card {{
+    flex: 1 1 300px;
+    max-width: 380px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 14px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}}
+
+.cal-month-title {{
+    text-align: center;
+    font-weight: 700;
+    font-size: 1.02rem;
+    color: #E5E7EB;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}}
+
+.cal-grid {{
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+    text-align: center;
+}}
+
+.cal-weekday {{
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #9CA3AF;
+    padding-bottom: 4px;
+}}
+
+.cal-day-empty {{
+    height: 36px;
+}}
+
+.cal-day-neutral {{
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    font-size: 0.85rem;
+    color: #6B7280;
+    background: rgba(255, 255, 255, 0.02);
+}}
+
+.cal-day-present {{
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    font-size: 0.88rem;
+    font-weight: 800;
+    color: #FFFFFF;
+    background: linear-gradient(135deg, #16A34A, #22C55E);
+    box-shadow: 0 3px 10px rgba(34, 197, 94, 0.45);
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    cursor: default;
+}}
+
+.cal-day-present:hover {{
+    transform: translateY(-2px) scale(1.12);
+    box-shadow: 0 6px 16px rgba(34, 197, 94, 0.7);
+}}
+
+.cal-day-absent {{
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    font-size: 0.88rem;
+    font-weight: 800;
+    color: #FFFFFF;
+    background: linear-gradient(135deg, #DC2626, #EF4444);
+    box-shadow: 0 3px 10px rgba(239, 68, 68, 0.45);
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    cursor: default;
+}}
+
+.cal-day-absent:hover {{
+    transform: translateY(-2px) scale(1.12);
+    box-shadow: 0 6px 16px rgba(239, 68, 68, 0.7);
+}}
+</style>
+""", unsafe_allow_html=True)
+
+DB_NAME = "aktu_manager.db"
+
+GRADE_POINTS = {
+    "A+ (90-100)": 10,
+    "A (80-89)": 9,
+    "B+ (70-79)": 8,
+    "B (60-69)": 7,
+    "C (50-59)": 6,
+    "D (45-49)": 5,
+    "F (Below 45)": 0,
+}
+
+# -------------------- BUILT-IN CUTE & COOL DOODLES (OFFLINE SVG) --------------------
+DOODLES = {
+    "🐱 Cyber Cat (Cool Shades)": '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="58" fill="#FFE8A3"/><polygon points="26,48 34,18 52,38" fill="#FF9F43" stroke="#2D3436" stroke-width="3" stroke-linejoin="round"/><polygon points="94,48 86,18 68,38" fill="#FF9F43" stroke="#2D3436" stroke-width="3" stroke-linejoin="round"/><circle cx="60" cy="66" r="34" fill="#FFBE76" stroke="#2D3436" stroke-width="3"/><rect x="33" y="54" width="23" height="14" rx="4" fill="#1E272E"/><rect x="64" y="54" width="23" height="14" rx="4" fill="#1E272E"/><line x1="56" y1="60" x2="64" y2="60" stroke="#1E272E" stroke-width="3"/><line x1="37" y1="57" x2="43" y2="65" stroke="#00D2D3" stroke-width="2.5"/><line x1="68" y1="57" x2="74" y2="65" stroke="#00D2D3" stroke-width="2.5"/><polygon points="56,74 64,74 60,79" fill="#FF6B81"/><path d="M52,83 Q60,90 68,83" fill="none" stroke="#2D3436" stroke-width="2.5" stroke-linecap="round"/></svg>',
+    "🤖 Chill Robo (Coder Bot)": '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="58" fill="#DFF9FB"/><line x1="60" y1="16" x2="60" y2="30" stroke="#2D3436" stroke-width="3.5"/><circle cx="60" cy="14" r="5" fill="#FF4757"/><rect x="28" y="30" width="64" height="56" rx="14" fill="#70A1FF" stroke="#2D3436" stroke-width="3"/><rect x="36" y="42" width="48" height="24" rx="8" fill="#1E272E"/><circle cx="48" cy="54" r="5" fill="#2ED573"/><circle cx="72" cy="54" r="5" fill="#2ED573"/><rect x="46" y="73" width="28" height="6" rx="3" fill="#FFFFFF"/><rect x="19" y="48" width="9" height="20" rx="4" fill="#FFA502" stroke="#2D3436" stroke-width="2.5"/><rect x="92" y="48" width="9" height="20" rx="4" fill="#FFA502" stroke="#2D3436" stroke-width="2.5"/></svg>',
+    "🐼 Study Panda (Geek Mode)": '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="58" fill="#E8F8F5"/><circle cx="32" cy="34" r="13" fill="#2D3436"/><circle cx="88" cy="34" r="13" fill="#2D3436"/><circle cx="60" cy="64" r="35" fill="#FFFFFF" stroke="#2D3436" stroke-width="3"/><ellipse cx="45" cy="60" rx="10" ry="8" fill="#2D3436"/><ellipse cx="75" cy="60" rx="10" ry="8" fill="#2D3436"/><circle cx="45" cy="60" r="12" fill="none" stroke="#0984E3" stroke-width="3"/><circle cx="75" cy="60" r="12" fill="none" stroke="#0984E3" stroke-width="3"/><line x1="57" y1="60" x2="63" y2="60" stroke="#0984E3" stroke-width="3"/><circle cx="46" cy="59" r="3" fill="#FFFFFF"/><circle cx="76" cy="59" r="3" fill="#FFFFFF"/><ellipse cx="60" cy="73" rx="5" ry="3.5" fill="#2D3436"/><path d="M53,81 Q60,87 67,81" fill="none" stroke="#2D3436" stroke-width="2.5" stroke-linecap="round"/></svg>',
+    "🦊 Hoodie Fox (Dev Vibes)": '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="58" fill="#FAD390"/><polygon points="25,52 30,18 52,38" fill="#E55039" stroke="#2D3436" stroke-width="3" stroke-linejoin="round"/><polygon points="95,52 90,18 68,38" fill="#E55039" stroke="#2D3436" stroke-width="3" stroke-linejoin="round"/><path d="M26,62 Q60,24 94,62 Q86,96 60,98 Q34,96 26,62 Z" fill="#EB2F06" stroke="#2D3436" stroke-width="3"/><path d="M28,66 Q45,68 60,86 Q75,68 92,66 Q82,95 60,97 Q38,95 28,66 Z" fill="#FFFFFF"/><circle cx="45" cy="60" r="4" fill="#2D3436"/><circle cx="75" cy="60" r="4" fill="#2D3436"/><circle cx="60" cy="78" r="4.5" fill="#2D3436"/><path d="M54,85 Q60,90 66,85" fill="none" stroke="#2D3436" stroke-width="2.5" stroke-linecap="round"/></svg>',
+    "🐸 Chill Frog (Headphones)": '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="58" fill="#D5F5E3"/><path d="M24,62 A36,36 0 0,1 96,62" fill="none" stroke="#2D3436" stroke-width="5"/><circle cx="42" cy="38" r="13" fill="#2ECC71" stroke="#2D3436" stroke-width="3"/><circle cx="78" cy="38" r="13" fill="#2ECC71" stroke="#2D3436" stroke-width="3"/><circle cx="42" cy="38" r="6" fill="#FFFFFF"/><circle cx="78" cy="38" r="6" fill="#FFFFFF"/><circle cx="43" cy="38" r="3" fill="#2D3436"/><circle cx="79" cy="38" r="3" fill="#2D3436"/><ellipse cx="60" cy="68" rx="36" ry="26" fill="#2ECC71" stroke="#2D3436" stroke-width="3"/><rect x="17" y="54" width="10" height="22" rx="5" fill="#FF4757" stroke="#2D3436" stroke-width="2.5"/><rect x="93" y="54" width="10" height="22" rx="5" fill="#FF4757" stroke="#2D3436" stroke-width="2.5"/><path d="M44,72 Q60,84 76,72" fill="none" stroke="#2D3436" stroke-width="3" stroke-linecap="round"/></svg>',
+    "🚀 Astro Bear (Space Explorer)": '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="58" fill="#2C3A47"/><circle cx="24" cy="28" r="2" fill="#FFF"/><circle cx="94" cy="26" r="2.5" fill="#FFF"/><circle cx="96" cy="88" r="2" fill="#FFF"/><circle cx="60" cy="62" r="42" fill="#74B9FF" fill-opacity="0.35" stroke="#DFE6E9" stroke-width="3.5"/><circle cx="38" cy="38" r="10" fill="#A0522D" stroke="#2D3436" stroke-width="2.5"/><circle cx="82" cy="38" r="10" fill="#A0522D" stroke="#2D3436" stroke-width="2.5"/><circle cx="60" cy="64" r="27" fill="#CD853F" stroke="#2D3436" stroke-width="2.5"/><ellipse cx="60" cy="71" rx="11" ry="8" fill="#FFEAA7"/><circle cx="50" cy="58" r="3.5" fill="#2D3436"/><circle cx="70" cy="58" r="3.5" fill="#2D3436"/><circle cx="60" cy="68" r="3.5" fill="#2D3436"/><path d="M55,74 Q60,78 65,74" fill="none" stroke="#2D3436" stroke-width="2" stroke-linecap="round"/></svg>',
+}
+
+
+# -------------------- DATABASE LAYER (SQLite) --------------------
+def get_connection():
+    return sqlite3.connect(DB_NAME, check_same_thread=False)
+
+
+def seed_logs_for_subject(cur, subject_id, attended, total):
+    """Generates clean historical weekday dates matching initial attended/total counts."""
+    absent = max(total - attended, 0)
+    statuses = (["Present"] * attended) + (["Absent"] * absent)
+    day_cursor = datetime.now().date() - timedelta(days=1)
+    generated = []
+    idx = 0
+    while idx < len(statuses):
+        if day_cursor.weekday() < 5:
+            if absent > 0 and idx % max(1, total // max(absent, 1)) == 2 and statuses.count("Absent") > 0:
+                st_val = "Absent"
+                statuses.remove("Absent")
+            else:
+                st_val = statuses.pop(0)
+            generated.append((subject_id, day_cursor.strftime("%Y-%m-%d"), st_val))
+        day_cursor -= timedelta(days=1)
+    cur.executemany(
+        "INSERT INTO attendance_logs (subject_id, log_date, status) VALUES (?, ?, ?)",
+        generated
+    )
+
+
+def init_db():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS subjects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT UNIQUE NOT NULL,
+            name TEXT NOT NULL,
+            credits REAL NOT NULL,
+            attended INTEGER NOT NULL,
+            total INTEGER NOT NULL,
+            grade TEXT NOT NULL
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS attendance_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject_id INTEGER NOT NULL,
+            log_date TEXT NOT NULL,
+            status TEXT NOT NULL,
+            FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS student_profile (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            name TEXT NOT NULL,
+            roll_no TEXT NOT NULL,
+            branch TEXT NOT NULL,
+            section TEXT NOT NULL,
+            semester TEXT NOT NULL,
+            avatar_mode TEXT NOT NULL,
+            doodle_name TEXT NOT NULL,
+            photo_blob BLOB
+        )
+    """)
+    conn.commit()
+
+    cur.execute("SELECT COUNT(*) FROM student_profile")
+    if cur.fetchone()[0] == 0:
+        cur.execute("""
+            INSERT INTO student_profile (id, name, roll_no, branch, section, semester, avatar_mode, doodle_name, photo_blob)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            "Manas Srivastav",
+            "2504920100346",
+            "B.Tech CSE",
+            "Section B-3",
+            "3rd Semester",
+            "Pre-built Doodle",
+            "🐱 Cyber Cat (Cool Shades)",
+            None
+        ))
+        conn.commit()
+
+    cur.execute("SELECT COUNT(*) FROM subjects")
+    if cur.fetchone()[0] == 0:
+        sample_subjects = [
+            ("BCS301", "Data Structures", 4.0, 26, 30, "A (80-89)"),
+            ("BCS302", "Computer Organization & Architecture", 4.0, 21, 30, "B+ (70-79)"),
+            ("BCS303", "Discrete Structures & Theory of Logic", 4.0, 24, 28, "A+ (90-100)"),
+            ("BAS303", "Mathematics-IV", 4.0, 19, 28, "B (60-69)"),
+            ("BCC302", "Python Programming", 2.0, 18, 20, "A+ (90-100)"),
+            ("BCS351", "Data Structures Lab", 1.0, 11, 12, "A (80-89)"),
+            ("BCS352", "COA Lab", 1.0, 9, 12, "B+ (70-79)"),
+        ]
+        for code, name, credits, att, tot, grade in sample_subjects:
+            cur.execute(
+                "INSERT INTO subjects (code, name, credits, attended, total, grade) VALUES (?, ?, ?, ?, ?, ?)",
+                (code, name, credits, att, tot, grade),
+            )
+            seed_logs_for_subject(cur, cur.lastrowid, att, tot)
+        conn.commit()
+    else:
+        cur.execute("SELECT id, attended, total FROM subjects")
+        for sub_id, att, tot in cur.fetchall():
+            cur.execute("SELECT COUNT(*) FROM attendance_logs WHERE subject_id = ?", (sub_id,))
+            if cur.fetchone()[0] == 0 and tot > 0:
+                seed_logs_for_subject(cur, sub_id, att, tot)
+        conn.commit()
+
+    conn.close()
+
+
+def fetch_profile():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT name, roll_no, branch, section, semester, avatar_mode, doodle_name, photo_blob FROM student_profile WHERE id = 1")
+    row = cur.fetchone()
+    conn.close()
+    return {
+        "name": row[0],
+        "roll_no": row[1],
+        "branch": row[2],
+        "section": row[3],
+        "semester": row[4],
+        "avatar_mode": row[5],
+        "doodle_name": row[6],
+        "photo_blob": row[7],
+    }
+
+
+def save_profile(name, roll_no, branch, section, semester, avatar_mode, doodle_name, photo_blob):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE student_profile
+        SET name = ?, roll_no = ?, branch = ?, section = ?, semester = ?,
+            avatar_mode = ?, doodle_name = ?, photo_blob = ?
+        WHERE id = 1
+    """, (name.strip(), roll_no.strip(), branch.strip(), section.strip(), semester, avatar_mode, doodle_name, photo_blob))
+    conn.commit()
+    conn.close()
+
+
+def fetch_subjects():
+    conn = get_connection()
+    df = pd.read_sql_query("SELECT * FROM subjects ORDER BY code", conn)
+    conn.close()
+    return df
+
+
+def fetch_subject_logs(subject_id):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT log_date, status FROM attendance_logs WHERE subject_id = ? ORDER BY log_date ASC, id ASC",
+        (subject_id,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def log_attendance_event(subject_id, attended, total, status, custom_date=None):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE subjects SET attended = ?, total = ? WHERE id = ?", (attended, total, subject_id))
+    date_str = custom_date.strftime("%Y-%m-%d") if custom_date else datetime.now().strftime("%Y-%m-%d")
+    cur.execute(
+        "INSERT INTO attendance_logs (subject_id, log_date, status) VALUES (?, ?, ?)",
+        (subject_id, date_str, status)
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_grade(subject_id, grade):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE subjects SET grade = ? WHERE id = ?", (grade, subject_id))
+    conn.commit()
+    conn.close()
+
+
+def add_subject(code, name, credits, attended, total, grade):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO subjects (code, name, credits, attended, total, grade) VALUES (?, ?, ?, ?, ?, ?)",
+        (code.upper().strip(), name.strip(), credits, attended, total, grade),
+    )
+    new_sub_id = cur.lastrowid
+    if total > 0:
+        seed_logs_for_subject(cur, new_sub_id, attended, total)
+    conn.commit()
+    conn.close()
+
+
+def delete_subject(subject_id):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM attendance_logs WHERE subject_id = ?", (subject_id,))
+    cur.execute("DELETE FROM subjects WHERE id = ?", (subject_id,))
+    conn.commit()
+    conn.close()
+
+
+# -------------------- CORE LOGIC / ALGORITHMS --------------------
+def analyze_attendance(attended, total, target=0.75):
+    if total == 0:
+        return 0.0, "No Classes", "Add total classes held."
+    pct = (attended / total) * 100
+    if pct >= target * 100:
+        can_bunk = math.floor((attended - target * total) / target)
+        return pct, "Safe (>= 75%)", f"Can skip {can_bunk} class(es) and still stay above {int(target*100)}%"
+    else:
+        must_attend = math.ceil((target * total - attended) / (1 - target))
+        return pct, "Shortage (< 75%)", f"Attend {must_attend} more class(es) to reach {int(target*100)}%"
+
+
+def calculate_sgpa(df):
+    if df.empty:
+        return 0.0, 0.0
+    total_credits = df["credits"].sum()
+    earned_points = sum(
+        row["credits"] * GRADE_POINTS.get(row["grade"], 0)
+        for _, row in df.iterrows()
+    )
+    sgpa = earned_points / total_credits if total_credits > 0 else 0.0
+    return round(sgpa, 2), total_credits
+
+
+def render_avatar_html(profile, size=115):
+    if profile["avatar_mode"] == "Upload My Photo" and profile["photo_blob"]:
+        b64_img = base64.b64encode(profile["photo_blob"]).decode("utf-8")
+        img_src = f"data:image/png;base64,{b64_img}"
+    else:
+        svg_code = DOODLES.get(profile["doodle_name"], list(DOODLES.values())[0]).strip()
+        b64_svg = base64.b64encode(svg_code.encode("utf-8")).decode("utf-8")
+        img_src = f"data:image/svg+xml;base64,{b64_svg}"
+
+    return f"""
+    <div style="display:flex; justify-content:center; margin-bottom:10px;">
+        <img src="{img_src}" style="width:{size}px; height:{size}px; border-radius:50%;
+             object-fit:cover; border:3px solid #4F8BF9; box-shadow:0 4px 10px rgba(0,0,0,0.15);" />
+    </div>
+    """
+
+
+def build_monthly_calendar_html(logs, code, name):
+    """Builds a real Mon-Sun monthly calendar grid with Green (Present) & Red (Absent) day tiles."""
+    date_status_map = {}
+    months_set = set()
+    pres_count = 0
+    abs_count = 0
+
+    for d_str, status in logs:
+        try:
+            dt = datetime.strptime(d_str, "%Y-%m-%d").date()
+            date_status_map[dt] = status
+            months_set.add((dt.year, dt.month))
+            if status == "Present":
+                pres_count += 1
+            elif status == "Absent":
+                abs_count += 1
+        except ValueError:
+            continue
+
+    if not months_set:
+        today = date.today()
+        months_set.add((today.year, today.month))
+
+    sorted_months = sorted(months_set)
+    weekday_headers = "".join(
+        f'<div class="cal-weekday">{day}</div>'
+        for day in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    )
+
+    month_cards = []
+    for yr, mo in sorted_months:
+        month_title = f"{calendar.month_name[mo]} {yr}"
+        cal_matrix = calendar.monthcalendar(yr, mo)
+        day_cells = []
+        for week in cal_matrix:
+            for day_num in week:
+                if day_num == 0:
+                    day_cells.append('<div class="cal-day-empty"></div>')
+                else:
+                    curr_dt = date(yr, mo, day_num)
+                    st_val = date_status_map.get(curr_dt)
+                    if st_val == "Present":
+                        day_cells.append(
+                            f'<div class="cal-day-present" title="{curr_dt.strftime("%d %b %Y")} — Present">{day_num}</div>'
+                        )
+                    elif st_val == "Absent":
+                        day_cells.append(
+                            f'<div class="cal-day-absent" title="{curr_dt.strftime("%d %b %Y")} — Absent">{day_num}</div>'
+                        )
+                    else:
+                        day_cells.append(f'<div class="cal-day-neutral">{day_num}</div>')
+
+        month_cards.append(
+            f'<div class="cal-month-card">'
+            f'<div class="cal-month-title">🗓️ {month_title}</div>'
+            f'<div class="cal-grid">{weekday_headers}{"".join(day_cells)}</div>'
+            f'</div>'
+        )
+
+    return (
+        f'<div class="cal-drawer-wrapper">'
+        f'<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">'
+        f'<div style="font-size:1.05rem; font-weight:700; color:#93C5FD;">'
+        f'📅 Attendance Calendar — {code} ({name})'
+        f'</div>'
+        f'<div style="font-size:0.88rem;">'
+        f'<span style="display:inline-block; width:11px; height:11px; background:#22C55E; border-radius:3px; margin-right:5px;"></span>'
+        f'<b style="color:#4ADE80;">Present: {pres_count}</b>'
+        f'   '
+        f'<span style="display:inline-block; width:11px; height:11px; background:#EF4444; border-radius:3px; margin-right:5px;"></span>'
+        f'<b style="color:#F87171;">Absent: {abs_count}</b>'
+        f'</div>'
+        f'</div>'
+        f'<div class="cal-months-flex">{"".join(month_cards)}</div>'
+        f'</div>'
+    )
+
+
+def render_horizontal_attendance_chart(summary_df, target_pct=75):
+    if "open_date_subject" not in st.session_state:
+        st.session_state.open_date_subject = None
+
+    legend_html = (
+        f'<div style="display:flex; justify-content:space-between; align-items:center; '
+        f'flex-wrap:wrap; gap:8px; margin-bottom:14px; font-size:0.9rem;">'
+        f'<div>'
+        f'<span style="display:inline-block; width:12px; height:12px; background:#22C55E; border-radius:50%; margin-right:6px; box-shadow:0 0 8px #22C55E;"></span>'
+        f'<b>Safe (≥ {target_pct}%)</b>'
+        f'    '
+        f'<span style="display:inline-block; width:12px; height:12px; background:#EF4444; border-radius:50%; margin-right:6px; box-shadow:0 0 8px #EF4444;"></span>'
+        f'<b>Shortage (< {target_pct}%)</b>'
+        f'</div>'
+        f'<div style="color:#888;">Click <b>📅 View Calendar</b> on any subject to inspect monthly Present / Absent dates</div>'
+        f'</div>'
+    )
+    st.markdown(legend_html, unsafe_allow_html=True)
+
+    for _, row in summary_df.iterrows():
+        sub_id = int(row["id"])
+        att_now = int(row["Attended"])
+        tot_now = int(row["Total"])
+        pct = float(row["Percentage (%)"])
+        is_safe = pct >= target_pct
+        is_open = (st.session_state.open_date_subject == sub_id)
+
+        card_class = "att-card-green" if is_safe else "att-card-red"
+        bar_grad = "linear-gradient(90deg, #16A34A, #22C55E)" if is_safe else "linear-gradient(90deg, #DC2626, #EF4444)"
+        bar_glow = "rgba(34, 197, 94, 0.45)" if is_safe else "rgba(239, 68, 68, 0.45)"
+        text_color = "#4ADE80" if is_safe else "#F87171"
+        bar_width = max(min(pct, 100.0), 10.0)
+        icon = "✅" if is_safe else "⚠️"
+
+        card_html = (
+            f'<div class="{card_class}">'
+            f'<div style="position:relative; width:100%; height:28px; background:rgba(255,255,255,0.08); '
+            f'border-radius:999px; overflow:hidden;">'
+            f'<div style="width:{bar_width}%; height:100%; background:{bar_grad}; border-radius:999px; '
+            f'box-shadow:0 0 14px {bar_glow}; display:flex; align-items:center; justify-content:flex-end; '
+            f'padding-right:14px; color:#FFFFFF; font-weight:700; font-size:0.92rem; box-sizing:border-box;">'
+            f'{pct:.2f}%'
+            f'</div>'
+            f'<div style="position:absolute; left:{target_pct}%; top:0; bottom:0; width:2px; '
+            f'border-left:2px dashed rgba(255,255,255,0.6);"></div>'
+            f'</div>'
+            f'<div style="margin-top:8px; font-size:0.98rem; font-weight:700;">'
+            f'{row["Code"]} — {row["Subject Name"]} '
+            f'<span style="font-weight:400; color:#9CA3AF; font-size:0.86rem;">({att_now}/{tot_now} classes)</span>'
+            f'</div>'
+            f'<div style="margin-top:3px; font-size:0.9rem; font-weight:600; color:{text_color};">'
+            f'{icon} {row["Smart Recommendation"]}'
+            f'</div>'
+            f'</div>'
+        )
+        st.markdown(card_html, unsafe_allow_html=True)
+
+        # Inline Present, Absent & Calendar Toggle Buttons (No page animation on click)
+        b_col1, b_col2, b_col3, _ = st.columns([1.05, 1.05, 1.45, 3.45])
+        with b_col1:
+            st.markdown('<span class="tag-present"></span>', unsafe_allow_html=True)
+            if st.button("✅ Present", key=f"pres_{sub_id}", width="stretch"):
+                log_attendance_event(sub_id, att_now + 1, tot_now + 1, "Present")
+                st.rerun()
+        with b_col2:
+            st.markdown('<span class="tag-absent"></span>', unsafe_allow_html=True)
+            if st.button("❌ Absent", key=f"abs_{sub_id}", width="stretch"):
+                log_attendance_event(sub_id, att_now, tot_now + 1, "Absent")
+                st.rerun()
+        with b_col3:
+            st.markdown('<span class="tag-dates"></span>', unsafe_allow_html=True)
+            toggle_label = "🔼 Hide Calendar" if is_open else "📅 View Calendar"
+            if st.button(toggle_label, key=f"dates_{sub_id}", width="stretch"):
+                st.session_state.open_date_subject = None if is_open else sub_id
+                st.rerun()
+
+        # Monthly Calendar Grid Drawer (Static, no bounce animation)
+        if is_open:
+            logs = fetch_subject_logs(sub_id)
+            cal_html = build_monthly_calendar_html(logs, row["Code"], row["Subject Name"])
+            st.markdown(cal_html, unsafe_allow_html=True)
+
+            # Log a Specific Date directly onto the Calendar
+            d_col1, d_col2, d_col3, _ = st.columns([1.4, 1.15, 1.15, 3.3])
+            with d_col1:
+                picked_date = st.date_input(
+                    "Log specific date",
+                    value=date.today(),
+                    key=f"dpick_{sub_id}",
+                    label_visibility="collapsed"
+                )
+            with d_col2:
+                st.markdown('<span class="tag-present"></span>', unsafe_allow_html=True)
+                if st.button("➕ Mark Present", key=f"logp_{sub_id}", width="stretch"):
+                    log_attendance_event(sub_id, att_now + 1, tot_now + 1, "Present", picked_date)
+                    st.rerun()
+            with d_col3:
+                st.markdown('<span class="tag-absent"></span>', unsafe_allow_html=True)
+                if st.button("➕ Mark Absent", key=f"loga_{sub_id}", width="stretch"):
+                    log_attendance_event(sub_id, att_now, tot_now + 1, "Absent", picked_date)
+                    st.rerun()
+
+        st.markdown('<div style="margin-bottom:12px;"></div>', unsafe_allow_html=True)
+
+
+# -------------------- INITIALIZE DATA --------------------
+init_db()
+profile = fetch_profile()
+df = fetch_subjects()
+
+# -------------------- SIDEBAR: STUDENT PROFILE --------------------
+with st.sidebar:
+    st.markdown("### 🧑‍🎓 Student Profile")
+    st.markdown(render_avatar_html(profile, size=120), unsafe_allow_html=True)
+
+    st.markdown(
+        f"""
+        <div style="text-align:center; padding-bottom:10px;">
+            <h4 style="margin:0;">{profile['name']}</h4>
+            <p style="margin:2px 0; color:gray; font-size:0.9rem;">Roll No: <b>{profile['roll_no']}</b></p>
+            <p style="margin:2px 0; font-size:0.88rem;">{profile['branch']} • {profile['section']}</p>
+            <span style="background:#4F8BF922; color:#4F8BF9; padding:3px 10px; border-radius:12px; font-size:0.8rem; font-weight:600;">
+                {profile['semester']}
+            </span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.divider()
+
+    with st.expander("✏️ Edit Profile & Avatar", expanded=False):
+        p_name = st.text_input("Student Name", value=profile["name"])
+        p_roll = st.text_input("AKTU Roll Number", value=profile["roll_no"])
+        p_branch = st.text_input("Branch / Course", value=profile["branch"])
+        p_sec = st.text_input("Section", value=profile["section"])
+        sem_options = ["1st Semester", "2nd Semester", "3rd Semester", "4th Semester", "5th Semester", "6th Semester", "7th Semester", "8th Semester"]
+        sem_idx = sem_options.index(profile["semester"]) if profile["semester"] in sem_options else 2
+        p_sem = st.selectbox("Current Semester", sem_options, index=sem_idx)
+
+        st.markdown("**Choose Profile Picture Style:**")
+        avatar_mode = st.radio(
+            "Avatar Option",
+            ["Pre-built Doodle", "Upload My Photo"],
+            index=0 if profile["avatar_mode"] == "Pre-built Doodle" else 1,
+            label_visibility="collapsed"
+        )
+
+        doodle_keys = list(DOODLES.keys())
+        d_idx = doodle_keys.index(profile["doodle_name"]) if profile["doodle_name"] in doodle_keys else 0
+        selected_doodle = profile["doodle_name"]
+        uploaded_bytes = profile["photo_blob"]
+
+        if avatar_mode == "Pre-built Doodle":
+            selected_doodle = st.selectbox("Pick a Cute & Cool Doodle", doodle_keys, index=d_idx)
+            preview_svg = base64.b64encode(DOODLES[selected_doodle].strip().encode("utf-8")).decode("utf-8")
+            st.markdown(
+                f'<div style="text-align:center;"><img src="data:image/svg+xml;base64,{preview_svg}" width="80"/></div>',
+                unsafe_allow_html=True
+            )
+        else:
+            uploaded_file = st.file_uploader("Upload Photo (JPG / PNG)", type=["jpg", "jpeg", "png"])
+            if uploaded_file is not None:
+                uploaded_bytes = uploaded_file.read()
+
+        if st.button("💾 Save Profile", width="stretch"):
+            if not p_name.strip() or not p_roll.strip():
+                st.error("Name and Roll Number cannot be empty.")
+            else:
+                save_profile(p_name, p_roll, p_branch, p_sec, p_sem, avatar_mode, selected_doodle, uploaded_bytes)
+                st.success("Profile updated!")
+                st.rerun()
+
+# -------------------- MAIN HEADER --------------------
+st.title("🎓 Smart AKTU CGPA, Credit & Attendance Manager")
+st.markdown(
+    f'<p style="font-size:1.25rem; font-weight:500; color:#9CA3AF; margin-top:-10px; margin-bottom:18px;">'
+    f'Welcome, <strong style="color:#F3F4F6;">{profile["name"]}</strong>  |  KCC Institute of Technology and Management'
+    f'</p>',
+    unsafe_allow_html=True
+)
+
+# -------------------- PILL NAVIGATION BAR --------------------
+if "active_page" not in st.session_state:
+    st.session_state.active_page = "attendance"
+
+nav1, nav2, nav3, _ = st.columns([1.3, 1.55, 1.25, 0.2])
+
+with nav1:
+    st.markdown('<span class="nav-pill-tag"></span>', unsafe_allow_html=True)
+    if st.session_state.active_page == "attendance":
+        st.markdown('<span class="nav-active"></span>', unsafe_allow_html=True)
+    if st.button("📊 Attendance & 75% Predictor", key="nav_att", width="stretch"):
+        if st.session_state.active_page != "attendance":
+            st.session_state.nav_tick += 1
+            st.session_state.active_page = "attendance"
+            st.rerun()
+
+with nav2:
+    st.markdown('<span class="nav-pill-tag"></span>', unsafe_allow_html=True)
+    if st.session_state.active_page == "sgpa":
+        st.markdown('<span class="nav-active"></span>', unsafe_allow_html=True)
+    if st.button("🏆 SGPA, CGPA & 160-Credit Tracker", key="nav_sgpa", width="stretch"):
+        if st.session_state.active_page != "sgpa":
+            st.session_state.nav_tick += 1
+            st.session_state.active_page = "sgpa"
+            st.rerun()
+
+with nav3:
+    st.markdown('<span class="nav-pill-tag"></span>', unsafe_allow_html=True)
+    if st.session_state.active_page == "crud":
+        st.markdown('<span class="nav-active"></span>', unsafe_allow_html=True)
+    if st.button("⚙️ Manage Subjects (CRUD)", key="nav_crud", width="stretch"):
+        if st.session_state.active_page != "crud":
+            st.session_state.nav_tick += 1
+            st.session_state.active_page = "crud"
+            st.rerun()
+
+# ==================== PAGE 1: ATTENDANCE TRACKER ====================
+if st.session_state.active_page == "attendance":
+    st.subheader("Subject-Wise Attendance & 75% Threshold Analysis")
+
+    if df.empty:
+        st.warning("No subjects found. Add subjects in the 'Manage Subjects' tab.")
+    else:
+        total_att = df["attended"].sum()
+        total_cls = df["total"].sum()
+        overall_pct = (total_att / total_cls * 100) if total_cls > 0 else 0.0
+        shortage_count = sum(
+            1 for _, r in df.iterrows() if (r["total"] > 0 and (r["attended"] / r["total"]) < 0.75)
+        )
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Overall Attendance", f"{overall_pct:.2f}%", f"{total_att}/{total_cls} Classes")
+        c2.metric("AKTU Minimum Requirement", "75.00%", "Mandatory for End-Sem")
+        c3.metric("Subjects in Shortage", f"{shortage_count} Subject(s)", delta_color="inverse")
+
+        st.divider()
+
+        records = []
+        for _, row in df.iterrows():
+            pct, status, action = analyze_attendance(row["attended"], row["total"])
+            records.append({
+                "id": row["id"],
+                "Code": row["code"],
+                "Subject Name": row["name"],
+                "Attended": row["attended"],
+                "Total": row["total"],
+                "Percentage (%)": round(pct, 2),
+                "Status": status,
+                "Smart Recommendation": action
+            })
+
+        summary_df = pd.DataFrame(records)
+
+        st.markdown("#### Horizontal Attendance Bar Chart (75% Target Analysis)")
+        render_horizontal_attendance_chart(summary_df, target_pct=75)
+
+        st.divider()
+        st.markdown("#### Detailed Subject Attendance Table")
+        st.dataframe(summary_df.drop(columns=["id"]), width="stretch", hide_index=True)
+
+# ==================== PAGE 2: SGPA, CGPA & CREDITS ====================
+elif st.session_state.active_page == "sgpa":
+    st.subheader("AKTU SGPA, CGPA & 160-Credit Degree Progress")
+
+    sgpa, sem_credits = calculate_sgpa(df)
+
+    col1, col2 = st.columns([1.2, 1])
+
+    with col1:
+        st.markdown("##### Current Semester Grade Simulator")
+        for _, row in df.iterrows():
+            g_col1, g_col2 = st.columns([2, 1.5])
+            g_col1.write(f"**{row['code']}** — {row['name']} ({row['credits']} Cr)")
+            grade_keys = list(GRADE_POINTS.keys())
+            curr_idx = grade_keys.index(row["grade"]) if row["grade"] in grade_keys else 0
+            new_grade = g_col2.selectbox(
+                f"Grade_{row['id']}",
+                grade_keys,
+                index=curr_idx,
+                label_visibility="collapsed"
+            )
+            if new_grade != row["grade"]:
+                update_grade(int(row["id"]), new_grade)
+                st.rerun()
+
+    with col2:
+        st.markdown("##### Previous Semesters & Overall CGPA")
+        prev_credits = st.number_input("Credits Earned in Previous Semesters", min_value=0.0, max_value=140.0, value=40.0, step=1.0)
+        prev_cgpa = st.number_input("Previous CGPA (0.00 - 10.00)", min_value=0.0, max_value=10.0, value=8.15, step=0.05)
+
+        total_degree_credits = prev_credits + sem_credits
+        overall_cgpa = (
+            ((prev_cgpa * prev_credits) + (sgpa * sem_credits)) / total_degree_credits
+            if total_degree_credits > 0 else 0.0
+        )
+
+        st.metric("Current Semester SGPA", f"{sgpa:.2f}", f"{sem_credits} Credits")
+        st.metric("Projected Overall CGPA", f"{overall_cgpa:.2f}", f"Equivalent %: {overall_cgpa * 10:.1f}%")
+
+        progress = min(total_degree_credits / 160.0, 1.0)
+        st.markdown(f"**AKTU B.Tech Degree Credit Progress:** `{total_degree_credits:.0f} / 160 Credits`")
+        st.progress(progress)
+
+# ==================== PAGE 3: CRUD OPERATIONS ====================
+elif st.session_state.active_page == "crud":
+    st.subheader("Database Management (Add / Remove Subjects)")
+
+    with st.form("add_subject_form", clear_on_submit=True):
+        f1, f2, f3 = st.columns(3)
+        new_code = f1.text_input("Subject Code (e.g., BCS301)")
+        new_name = f2.text_input("Subject Name")
+        new_credits = f3.number_input("Credits", min_value=0.0, max_value=10.0, value=4.0, step=0.5)
+
+        f4, f5, f6 = st.columns(3)
+        new_att = f4.number_input("Classes Attended", min_value=0, max_value=200, value=15)
+        new_tot = f5.number_input("Total Classes Held", min_value=0, max_value=200, value=20)
+        new_grade = f6.selectbox("Expected Grade", list(GRADE_POINTS.keys()))
+
+        submitted = st.form_submit_button("➕ Add Subject to Database")
+        if submitted:
+            if not new_code or not new_name:
+                st.error("Please enter both Subject Code and Subject Name.")
+            elif new_att > new_tot:
+                st.error("Classes attended cannot exceed total classes held.")
+            else:
+                try:
+                    add_subject(new_code, new_name, new_credits, int(new_att), int(new_tot), new_grade)
+                    st.success(f"Added {new_code.upper()} successfully!")
+                    st.rerun()
+                except sqlite3.IntegrityError:
+                    st.error("A subject with this code already exists.")
+
+    st.divider()
+    st.markdown("##### Delete Existing Subject")
+    if not df.empty:
+        del_choice = st.selectbox("Select Subject to Delete", df["code"] + " - " + df["name"], key="del_box")
+        if st.button("🗑️ Delete Selected Subject"):
+            del_id = int(df[df["code"] == del_choice.split(" - ")[0]].iloc[0]["id"])
+            delete_subject(del_id)
+            st.success("Subject deleted.")
+            st.rerun()
