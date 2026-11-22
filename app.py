@@ -71,7 +71,7 @@ if theme_mode == "dark":
     card_bg = "rgba(11, 26, 40, 0.88)"
     safe_card_bg = "rgba(16, 185, 129, 0.15)"
     safe_card_border = "rgba(52, 211, 153, 0.55)"
-    card_border = "rgba(56, 189, 248, 0.28)"
+    card_border = "rgba(56, 189, 248, 0.32)"
     btn_bg = "#0E2235"
     btn_text = "#F1F5F9"
     btn_hover_bg = "#163552"
@@ -230,6 +230,12 @@ html body .stApp {{
     background: transparent !important;
 }}
 
+[data-testid="stToolbar"] {{
+    right: 1rem !important;
+    top: 0.35rem !important;
+    z-index: 999 !important;
+}}
+
 html body .stApp [data-testid="stAlert"],
 html body .stApp [data-testid="stNotification"],
 html body .stApp .stAlert > div {{
@@ -312,7 +318,7 @@ html body .stApp code {{
 
 html body .stApp .block-container {{
     max-width: 98% !important;
-    padding-top: 1.1rem !important;
+    padding-top: 3.5rem !important;
     padding-left: 1.8rem !important;
     padding-right: 1.8rem !important;
     padding-bottom: 2rem !important;
@@ -368,6 +374,8 @@ html body [data-testid="stBaseButton-secondary"] {{
     justify-content: center !important;
     cursor: pointer !important;
     outline: none !important;
+    position: relative !important;
+    z-index: 1 !important;
 }}
 
 html body [data-testid="stPopover"] button {{
