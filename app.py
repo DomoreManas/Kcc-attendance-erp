@@ -7,6 +7,7 @@ import math
 import os
 import random
 import sqlite3
+import time
 import pandas as pd
 import streamlit as st
 
@@ -22,7 +23,7 @@ if "nav_tick" not in st.session_state:
     st.session_state.nav_tick = 0
 
 if "theme_mode" not in st.session_state:
-    st.session_state.theme_mode = "kcc"  # Default KCC Theme on site open
+    st.session_state.theme_mode = "kcc"
 
 if "show_forgot_pw" not in st.session_state:
     st.session_state.show_forgot_pw = False
@@ -40,12 +41,11 @@ theme_mode = st.session_state.theme_mode
 is_logged_in = (st.session_state.auth_user is not None)
 
 
-# -------------------- PASSWORD HASHING HELPER (SHA-256) --------------------
 def hash_password(plain_pw: str) -> str:
     return hashlib.sha256(plain_pw.strip().encode("utf-8")).hexdigest()
 
 
-# -------------------- THEME PALETTE (KCC THEME | OCEAN DARK | COASTAL LIGHT) --------------------
+# -------------------- THEME PALETTE --------------------
 if theme_mode == "dark":
     if not is_logged_in:
         bg_css = """
@@ -151,7 +151,6 @@ elif theme_mode == "light":
     is_light_ui = True
 
 else:
-    # DEFAULT: KCC THEME (RED & WHITE)
     if not is_logged_in:
         bg_css = """
             background-color: #FAF6F6 !important;
@@ -231,7 +230,6 @@ html body .stApp {{
     background: transparent !important;
 }}
 
-/* Alert / Info / Warning / Error Boxes Theme-Aware */
 html body .stApp [data-testid="stAlert"],
 html body .stApp [data-testid="stNotification"],
 html body .stApp .stAlert > div {{
@@ -247,7 +245,6 @@ html body .stApp [data-testid="stNotification"] * {{
     color: {text_main} !important;
 }}
 
-/* Sidebar Collapse / Expand Controls High Visibility */
 [data-testid="stSidebarCollapseButton"] button,
 [data-testid="stSidebarNavCollapseButton"] button,
 [data-testid="collapsedControl"] button {{
@@ -283,7 +280,6 @@ html body .stApp [data-baseweb="checkbox"] label div {{
     color: {text_main} !important;
 }}
 
-/* Metric Delta Sub-Pill Contrast Fix */
 html body .stApp [data-testid="stMetricDelta"],
 html body .stApp [data-testid="stMetricDelta"] > div {{
     background: {delta_bg} !important;
@@ -322,7 +318,6 @@ html body .stApp .block-container {{
     padding-bottom: 2rem !important;
 }}
 
-/* Standard Clickable Buttons */
 .stButton button, .stFormSubmitButton button,
 .stDownloadButton button, [data-testid="stDownloadButton"] button {{
     border-radius: 999px !important;
@@ -350,7 +345,6 @@ html body .stApp .block-container {{
     box-shadow: 0 8px 20px {btn_hover_shadow} !important;
 }}
 
-/* Full-Surface Interactive Popover Buttons (Phone QR & Change Theme) */
 html body [data-testid="stPopover"],
 html body [data-baseweb="popover"],
 html body [data-baseweb="popover"] > div {{
@@ -415,7 +409,6 @@ html body [data-baseweb="popover"] button * {{
     pointer-events: none !important;
 }}
 
-/* Popover Dropdown Surface (Theme Selector & Phone QR) */
 html body [data-testid="stPopoverBody"],
 html body [data-testid="stPopoverBody"] > div,
 html body [data-testid="stPopoverBody"] [data-testid="stVerticalBlock"],
@@ -465,7 +458,6 @@ html body [data-testid="stPopoverBody"] button:hover {{
     display: none !important;
 }}
 
-/* Top Pill Navigation Buttons (Clean State Reset + Consistent Glow Across All 3 Themes) */
 [data-testid="stColumn"]:has(.nav-pill-tag) button {{
     min-height: 54px !important;
     padding: 14px 20px !important;
@@ -516,28 +508,24 @@ html body [data-testid="stPopoverBody"] button:hover {{
     -webkit-text-fill-color: #FFFFFF !important;
 }}
 
-/* PRESENT Button: Green Glow */
 [data-testid="stColumn"]:has(.tag-present) button:hover {{
     background: linear-gradient(135deg, rgba(34, 197, 94, 0.28) 0%, rgba(14, 165, 233, 0.18) 100%) !important;
     border-color: rgba(34, 197, 94, 0.65) !important;
     box-shadow: 0 10px 22px rgba(34, 197, 94, 0.42) !important;
 }}
 
-/* ABSENT Button: Red Glow */
 [data-testid="stColumn"]:has(.tag-absent) button:hover {{
     background: linear-gradient(135deg, rgba(239, 68, 68, 0.28) 0%, rgba(166, 28, 32, 0.18) 100%) !important;
     border-color: rgba(239, 68, 68, 0.65) !important;
     box-shadow: 0 10px 22px rgba(239, 68, 68, 0.42) !important;
 }}
 
-/* Calendar View Toggle Button */
 [data-testid="stColumn"]:has(.tag-dates) button:hover {{
     background: {btn_hover_bg} !important;
     border-color: {btn_hover_border} !important;
     box-shadow: 0 10px 22px {btn_hover_shadow} !important;
 }}
 
-/* Dropdowns, Number Inputs, Date Inputs, Text Inputs, Password Fields & Expanders */
 html body .stApp [data-baseweb="select"] > div,
 html body .stApp [data-baseweb="input"] > div,
 html body .stApp [data-baseweb="base-input"],
@@ -599,7 +587,6 @@ html body .stApp textarea::placeholder {{
     color: {text_main} !important;
 }}
 
-/* Clean Styled HTML Tables */
 .erp-table-wrap {{
     width: 100%;
     overflow-x: auto;
@@ -647,7 +634,6 @@ table.erp-styled-table tbody td {{
     overflow: hidden !important;
 }}
 
-/* Attendance Bar Cards */
 .att-card-green {{
     width: 100%;
     border-radius: 16px;
@@ -704,7 +690,6 @@ table.erp-styled-table tbody td {{
     overflow: hidden;
 }}
 
-/* Login Persona Card */
 .login-hero {{
     background: {card_bg};
     border: 1.5px solid {card_border};
@@ -715,7 +700,6 @@ table.erp-styled-table tbody td {{
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }}
 
-/* Monthly Calendar Drawer */
 .cal-drawer-wrapper {{
     border-radius: 18px;
     padding: 18px 20px;
@@ -821,7 +805,6 @@ GRADE_POINTS = {
     "F (Below 45)": 0,
 }
 
-# -------------------- BUILT-IN CUTE & COOL DOODLES (OFFLINE SVG) --------------------
 DOODLES = {
     "🐱 Cyber Cat (Cool Shades)": '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="58" fill="#FFE8A3"/><polygon points="26,48 34,18 52,38" fill="#FF9F43" stroke="#2D3436" stroke-width="3" stroke-linejoin="round"/><polygon points="94,48 86,18 68,38" fill="#FF9F43" stroke="#2D3436" stroke-width="3" stroke-linejoin="round"/><circle cx="60" cy="66" r="34" fill="#FFBE76" stroke="#2D3436" stroke-width="3"/><rect x="33" y="54" width="23" height="14" rx="4" fill="#1E272E"/><rect x="64" y="54" width="23" height="14" rx="4" fill="#1E272E"/><line x1="56" y1="60" x2="64" y2="60" stroke="#1E272E" stroke-width="3"/><line x1="37" y1="57" x2="43" y2="65" stroke="#00D2D3" stroke-width="2.5"/><line x1="68" y1="57" x2="74" y2="65" stroke="#00D2D3" stroke-width="2.5"/><polygon points="56,74 64,74 60,79" fill="#FF6B81"/><path d="M52,83 Q60,90 68,83" fill="none" stroke="#2D3436" stroke-width="2.5" stroke-linecap="round"/></svg>',
     "🤖 Chill Robo (Coder Bot)": '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><circle cx="60" cy="60" r="58" fill="#DFF9FB"/><line x1="60" y1="16" x2="60" y2="30" stroke="#2D3436" stroke-width="3.5"/><circle cx="60" cy="14" r="5" fill="#FF4757"/><rect x="28" y="30" width="64" height="56" rx="14" fill="#70A1FF" stroke="#2D3436" stroke-width="3"/><rect x="36" y="42" width="48" height="24" rx="8" fill="#1E272E"/><circle cx="48" cy="54" r="5" fill="#2ED573"/><circle cx="72" cy="54" r="5" fill="#2ED573"/><rect x="46" y="73" width="28" height="6" rx="3" fill="#FFFFFF"/><rect x="19" y="48" width="9" height="20" rx="4" fill="#FFA502" stroke="#2D3436" stroke-width="2.5"/><rect x="92" y="48" width="9" height="20" rx="4" fill="#FFA502" stroke="#2D3436" stroke-width="2.5"/></svg>',
@@ -832,7 +815,7 @@ DOODLES = {
 }
 
 
-# -------------------- HYBRID DATABASE LAYER (PERMANENT CLOUD POSTGRESQL OR LOCAL SQLITE) --------------------
+# -------------------- FAST CACHED HYBRID DATABASE LAYER --------------------
 def get_cloud_db_url():
     try:
         if "DATABASE_URL" in st.secrets:
@@ -903,27 +886,38 @@ class HybridConnection:
         self.raw_conn.commit()
 
     def close(self):
-        self.raw_conn.close()
+        if not self.is_pg:
+            self.raw_conn.close()
+
+
+@st.cache_resource
+def _get_pg_persistent_conn(db_url: str):
+    import psycopg2
+    clean_url = db_url.strip()
+    for attempt in range(2):
+        try:
+            return psycopg2.connect(clean_url, connect_timeout=10)
+        except psycopg2.OperationalError:
+            if attempt == 0:
+                time.sleep(1.0)
+            else:
+                raise
 
 
 def get_connection():
     db_url = get_cloud_db_url()
     if db_url:
-        import time
         import psycopg2
-
-        clean_url = db_url.strip()
-        last_err = None
-        for attempt in range(2):
-            try:
-                raw = psycopg2.connect(clean_url, connect_timeout=15)
-                return HybridConnection(raw, is_pg=True)
-            except psycopg2.OperationalError as exc:
-                last_err = exc
-                if attempt == 0:
-                    time.sleep(1.5)
-                else:
-                    raise last_err
+        raw = _get_pg_persistent_conn(db_url)
+        if raw.closed:
+            _get_pg_persistent_conn.clear()
+            raw = _get_pg_persistent_conn(db_url)
+        try:
+            if raw.info.transaction_status == psycopg2.extensions.TRANSACTION_STATUS_INERROR:
+                raw.rollback()
+        except Exception:
+            pass
+        return HybridConnection(raw, is_pg=True)
     raw = sqlite3.connect(DB_NAME, check_same_thread=False)
     raw.execute("PRAGMA foreign_keys = ON")
     return HybridConnection(raw, is_pg=False)
@@ -952,7 +946,6 @@ def render_clean_table(df_in):
 
 
 def save_user_theme_preference(role, user_id, chosen_theme):
-    """Persists the logged-in user's theme choice in the database across sessions."""
     conn = get_connection()
     cur = conn.cursor()
     if role == "Student":
@@ -973,7 +966,6 @@ def apply_selected_theme(chosen_code):
     st.rerun()
 
 
-# -------------------- TEACHER / STUDENT PHONE QR POPOVER --------------------
 def render_phone_qr_popover():
     with st.popover("📱 Phone QR", width="stretch"):
         st.caption("Scan with a phone camera to open the ERP on mobile.")
@@ -1003,7 +995,6 @@ def render_phone_qr_popover():
             st.warning("Enter your live Streamlit URL to generate a QR code.")
 
 
-# -------------------- TOP-LEFT KCC LOGO & TOP-RIGHT PHONE QR + THEME DROPDOWN --------------------
 def render_top_header_bar():
     col_logo, _, col_qr, col_theme = st.columns([2.2, 3.1, 1.15, 1.45])
 
@@ -1307,29 +1298,27 @@ def init_db():
                         conn.raw_conn.rollback()
                 idx_counter += 1
 
-    # Self-healing check: ensure every student has rows in student_subjects for every subject_catalog entry
-    cur.execute("SELECT id, roll_no FROM students")
-    all_students = cur.fetchall()
-    cur.execute("SELECT id, code FROM subject_catalog ORDER BY code")
-    all_subjects = cur.fetchall()
+    cur.execute("SELECT COUNT(*) FROM student_subjects")
+    if cur.fetchone()[0] == 0:
+        cur.execute("SELECT id, roll_no FROM students")
+        all_students = cur.fetchall()
+        cur.execute("SELECT id, code FROM subject_catalog ORDER BY code")
+        all_subjects = cur.fetchall()
 
-    manas_preset = [
-        (26, 30, "A (80-89)"),
-        (21, 30, "B+ (70-79)"),
-        (24, 28, "A+ (90-100)"),
-        (19, 28, "B (60-69)"),
-        (18, 20, "A+ (90-100)"),
-        (11, 12, "A (80-89)"),
-        (9, 12, "B+ (70-79)"),
-    ]
-    grade_choices = ["A+ (90-100)", "A (80-89)", "B+ (70-79)", "B (60-69)", "C (50-59)"]
-    rng_fix = random.Random(42)
+        manas_preset = [
+            (26, 30, "A (80-89)"),
+            (21, 30, "B+ (70-79)"),
+            (24, 28, "A+ (90-100)"),
+            (19, 28, "B (60-69)"),
+            (18, 20, "A+ (90-100)"),
+            (11, 12, "A (80-89)"),
+            (9, 12, "B+ (70-79)"),
+        ]
+        grade_choices = ["A+ (90-100)", "A (80-89)", "B+ (70-79)", "B (60-69)", "C (50-59)"]
+        rng_fix = random.Random(42)
 
-    for st_id, r_no in all_students:
-        for s_idx, (sub_id, code) in enumerate(all_subjects):
-            cur.execute("SELECT id FROM student_subjects WHERE student_id = ? AND subject_id = ?", (st_id, sub_id))
-            existing_ss = cur.fetchone()
-            if not existing_ss:
+        for st_id, r_no in all_students:
+            for s_idx, (sub_id, code) in enumerate(all_subjects):
                 if r_no == "2504920100346":
                     att, tot, grd = manas_preset[s_idx % len(manas_preset)]
                 else:
@@ -1353,7 +1342,7 @@ def init_db():
     if cur.fetchone()[0] == 0:
         default_fac_hash = hash_password("faculty123")
         for f_code, f_name, f_desig in [
-            ("FAC001", "Mr. Vishal", "Computer Science & Engineering", "Assistant Professor (Python)") if False else ("FAC001", "Mr. Vishal", "Assistant Professor (Python)"),
+            ("FAC001", "Mr. Vishal", "Assistant Professor (Python)"),
             ("FAC002", "Arya Devi", "Assistant Professor (COA)"),
             ("FAC003", "Mr. Satyam", "Assistant Professor (DSTL)"),
         ]:
@@ -1367,28 +1356,25 @@ def init_db():
                 if conn.is_pg:
                     conn.raw_conn.rollback()
 
-    cur.execute("SELECT id, faculty_code FROM faculty")
-    fac_map = {code: fid for fid, code in cur.fetchall()}
-    cur.execute("SELECT id, code FROM subject_catalog")
-    sub_map = {code: sid for sid, code in cur.fetchall()}
+    cur.execute("SELECT COUNT(*) FROM faculty_assignments")
+    if cur.fetchone()[0] == 0:
+        cur.execute("SELECT id, faculty_code FROM faculty")
+        fac_map = {code: fid for fid, code in cur.fetchall()}
+        cur.execute("SELECT id, code FROM subject_catalog")
+        sub_map = {code: sid for sid, code in cur.fetchall()}
 
-    if all(k in fac_map for k in ("FAC001", "FAC002", "FAC003")) and all(k in sub_map for k in ("BCC302", "BCS302", "BCS303")):
-        assignments = [
-            (fac_map["FAC001"], "Section B-3", sub_map["BCC302"], "2026-08-01"),
-            (fac_map["FAC001"], "Section B-4", sub_map["BCC302"], "2026-08-01"),
-            (fac_map["FAC001"], "Section B-6", sub_map["BCC302"], "2026-08-01"),
-            (fac_map["FAC002"], "Section B-2", sub_map["BCS302"], "2026-08-01"),
-            (fac_map["FAC002"], "Section B-3", sub_map["BCS302"], "2026-08-01"),
-            (fac_map["FAC003"], "Section B-2", sub_map["BCS303"], "2026-08-01"),
-            (fac_map["FAC003"], "Section B-3", sub_map["BCS303"], "2026-08-01"),
-            (fac_map["FAC003"], "Section B-4", sub_map["BCS303"], "2026-08-01"),
-        ]
-        for fid, sec, sid, appt_dt in assignments:
-            cur.execute(
-                "SELECT id FROM faculty_assignments WHERE faculty_id = ? AND section = ? AND subject_id = ?",
-                (fid, sec, sid)
-            )
-            if not cur.fetchone():
+        if all(k in fac_map for k in ("FAC001", "FAC002", "FAC003")) and all(k in sub_map for k in ("BCC302", "BCS302", "BCS303")):
+            assignments = [
+                (fac_map["FAC001"], "Section B-3", sub_map["BCC302"], "2026-08-01"),
+                (fac_map["FAC001"], "Section B-4", sub_map["BCC302"], "2026-08-01"),
+                (fac_map["FAC001"], "Section B-6", sub_map["BCC302"], "2026-08-01"),
+                (fac_map["FAC002"], "Section B-2", sub_map["BCS302"], "2026-08-01"),
+                (fac_map["FAC002"], "Section B-3", sub_map["BCS302"], "2026-08-01"),
+                (fac_map["FAC003"], "Section B-2", sub_map["BCS303"], "2026-08-01"),
+                (fac_map["FAC003"], "Section B-3", sub_map["BCS303"], "2026-08-01"),
+                (fac_map["FAC003"], "Section B-4", sub_map["BCS303"], "2026-08-01"),
+            ]
+            for fid, sec, sid, appt_dt in assignments:
                 try:
                     cur.execute(
                         "INSERT INTO faculty_assignments (faculty_id, section, subject_id, appointed_at) VALUES (?, ?, ?, ?)",
@@ -1402,7 +1388,12 @@ def init_db():
     conn.close()
 
 
-# -------------------- AUTH, SHA-256 VERIFICATION & PIN RECOVERY HELPERS --------------------
+@st.cache_resource
+def ensure_db_initialized():
+    init_db()
+    return True
+
+
 def authenticate_user(role, login_id, password):
     login_id = login_id.strip()
     pw_hash = hash_password(password)
@@ -1647,52 +1638,53 @@ def fetch_student_records(student_id):
 
 
 def fetch_faculty_roster_since_appointment(target_section, target_sub_id, appointed_at_str):
-    """Returns roster counts strictly from logs recorded on or after faculty appointment date."""
     conn = get_connection()
     cur = conn.cursor()
+    appt_date = str(appointed_at_str or "2026-08-01")[:10]
     cur.execute("""
-        SELECT ss.id AS record_id, s.roll_no, s.name AS student_name, s.section
+        SELECT ss.id AS record_id, s.roll_no, s.name AS student_name, s.section,
+               COUNT(al.id) AS total_cnt,
+               COALESCE(SUM(CASE WHEN al.status = 'Present' THEN 1 ELSE 0 END), 0) AS present_cnt
         FROM student_subjects ss
         JOIN students s ON ss.student_id = s.id
+        LEFT JOIN attendance_logs al ON al.record_id = ss.id AND al.log_date >= ?
         WHERE s.section = ? AND ss.subject_id = ?
+        GROUP BY ss.id, s.roll_no, s.name, s.section
         ORDER BY s.roll_no
-    """, (target_section, target_sub_id))
-    base_rows = cur.fetchall()
-
-    appt_date = str(appointed_at_str or "2026-08-01")[:10]
-    rows_out = []
-    for rec_id, r_no, s_name, sec in base_rows:
-        cur.execute(
-            "SELECT COUNT(*) FROM attendance_logs WHERE record_id = ? AND log_date >= ?",
-            (rec_id, appt_date)
-        )
-        tot_f = int(cur.fetchone()[0] or 0)
-        cur.execute(
-            "SELECT COUNT(*) FROM attendance_logs WHERE record_id = ? AND log_date >= ? AND status = 'Present'",
-            (rec_id, appt_date)
-        )
-        att_f = int(cur.fetchone()[0] or 0)
-        rows_out.append({
-            "record_id": int(rec_id),
-            "roll_no": r_no,
-            "student_name": s_name,
-            "section": sec,
-            "attended": att_f,
-            "total": tot_f,
-        })
+    """, (appt_date, target_section, target_sub_id))
+    rows = cur.fetchall()
     conn.close()
+    rows_out = [
+        {
+            "record_id": int(r[0]),
+            "roll_no": r[1],
+            "student_name": r[2],
+            "section": r[3],
+            "attended": int(r[5] or 0),
+            "total": int(r[4] or 0),
+        }
+        for r in rows
+    ]
     return pd.DataFrame(rows_out)
 
 
-def fetch_self_attendance_stats(record_id):
+def fetch_all_self_attendance_stats(record_ids):
+    if not record_ids:
+        return {}
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM self_attendance_logs WHERE record_id = ?", (record_id,))
-    tot = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM self_attendance_logs WHERE record_id = ? AND status = 'Present'", (record_id,))
-    att = cur.fetchone()[0]
+    placeholders = ",".join("?" for _ in record_ids)
+    cur.execute(f"""
+        SELECT record_id,
+               COUNT(*) AS tot,
+               COALESCE(SUM(CASE WHEN status = 'Present' THEN 1 ELSE 0 END), 0) AS att
+        FROM self_attendance_logs
+        WHERE record_id IN ({placeholders})
+        GROUP BY record_id
+    """, tuple(record_ids))
+    res = {int(r[0]): (int(r[2] or 0), int(r[1] or 0)) for r in cur.fetchall()}
     conn.close()
-    return int(att), int(tot)
+    return res
 
 
 def fetch_self_record_logs(record_id):
@@ -1796,7 +1788,6 @@ def update_student_avatar_and_cgpa(student_id, prev_credits, prev_cgpa, avatar_m
     conn.close()
 
 
-# -------------------- CORE LOGIC / ANALGORITHMS --------------------
 def analyze_attendance(attended, total, target=0.75):
     if total == 0:
         return 0.0, "No Classes", "No classes held yet (0/0)."
@@ -1897,12 +1888,12 @@ def build_monthly_calendar_html(logs, code, name, title_prefix="Official Attenda
         f'<div class="cal-drawer-wrapper">'
         f'<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">'
         f'<div style="font-size:1.05rem; font-weight:700; color:{accent_color};">'
-        f'📅 {title_prefix} — {code} ({name})'
+        f'📅 {title_prefix} &mdash; {code} ({name})'
         f'</div>'
         f'<div style="font-size:0.88rem;">'
         f'<span style="display:inline-block; width:11px; height:11px; background:#22C55E; border-radius:3px; margin-right:5px;"></span>'
         f'<b style="color:#16A34A;">Present: {pres_count}</b>'
-        f'   '
+        f'&nbsp;&nbsp;&nbsp;'
         f'<span style="display:inline-block; width:11px; height:11px; background:#EF4444; border-radius:3px; margin-right:5px;"></span>'
         f'<b style="color:#DC2626;">Absent: {abs_count}</b>'
         f'</div>'
@@ -1926,19 +1917,21 @@ def render_student_self_attendance_manager(df):
     )
 
     self_date = st.date_input("Select Class Date for Self Attendance", value=date.today(), key="st_self_att_date")
+    rec_ids = [int(r) for r in df["record_id"].tolist()]
+    stats_map = fetch_all_self_attendance_stats(rec_ids)
 
     for _, row in df.iterrows():
         rec_id = int(row["record_id"])
         code = row["code"]
         name = row["name"]
-        s_att, s_tot = fetch_self_attendance_stats(rec_id)
+        s_att, s_tot = stats_map.get(rec_id, (0, 0))
         s_pct = (s_att / s_tot * 100) if s_tot > 0 else 0.0
         is_open = (st.session_state.self_open_date_record == rec_id)
 
         sc1, sc2, sc3, sc4, sc5 = st.columns([2.5, 1.3, 0.95, 0.95, 1.25])
         with sc1:
             st.markdown(
-                f"<div style='padding-top:8px;'><b>{code}</b> — {name}</div>",
+                f"<div style='padding-top:8px;'><b>{code}</b> &mdash; {name}</div>",
                 unsafe_allow_html=True
             )
         with sc2:
@@ -1980,12 +1973,12 @@ def render_student_attendance_chart(summary_df, target_pct=75):
         f'flex-wrap:wrap; gap:8px; margin-bottom:14px; font-size:0.9rem;">'
         f'<div>'
         f'<span style="display:inline-block; width:12px; height:12px; background:#22C55E; border-radius:50%; margin-right:6px; box-shadow:0 0 8px #22C55E;"></span>'
-        f'<b>Safe (≥ {target_pct}%)</b>'
-        f'    '
+        f'<b>Safe (&ge; {target_pct}%)</b>'
+        f'&nbsp;&nbsp;&nbsp;&nbsp;'
         f'<span style="display:inline-block; width:12px; height:12px; background:#EF4444; border-radius:50%; margin-right:6px; box-shadow:0 0 8px #EF4444;"></span>'
-        f'<b>Shortage (< {target_pct}%)</b>'
+        f'<b>Shortage (&lt; {target_pct}%)</b>'
         f'</div>'
-        f'<div style="color:{text_muted};">Read-only official ERP records • Click <b>📅 View Calendar</b> to inspect dates</div>'
+        f'<div style="color:{text_muted};">Read-only official ERP records &bull; Click <b>📅 View Calendar</b> to inspect dates</div>'
         f'</div>'
     )
     st.markdown(legend_html, unsafe_allow_html=True)
@@ -2017,7 +2010,7 @@ def render_student_attendance_chart(summary_df, target_pct=75):
             f'border-left:2px dashed rgba(148,163,184,0.75);"></div>'
             f'</div>'
             f'<div style="margin-top:8px; font-size:0.98rem; font-weight:700; color:{text_main};">'
-            f'{row["Code"]} — {row["Subject Name"]} '
+            f'{row["Code"]} &mdash; {row["Subject Name"]} '
             f'<span style="font-weight:400; color:{text_muted}; font-size:0.86rem;">({att_now}/{tot_now} classes)</span>'
             f'</div>'
             f'<div style="margin-top:3px; font-size:0.9rem; font-weight:600; color:{text_color};">'
@@ -2042,8 +2035,8 @@ def render_student_attendance_chart(summary_df, target_pct=75):
         st.markdown('<div style="margin-bottom:10px;"></div>', unsafe_allow_html=True)
 
 
-# -------------------- INITIALIZE DATABASE & TOP HEADER BAR --------------------
-init_db()
+# -------------------- ONE-TIME INITIALIZATION & TOP HEADER BAR --------------------
+ensure_db_initialized()
 render_top_header_bar()
 
 
@@ -2053,7 +2046,7 @@ if st.session_state.auth_user is None:
     <div class="login-hero">
         <h1 style="margin:0; color:{accent_color} !important;">🎓 KCC Institute of Technology and Management</h1>
         <p style="font-size:1.15rem; color:{text_muted}; margin:6px 0 0 0;">
-            Smart AKTU Academic ERP Portal • SHA-256 Secured Role-Based Attendance & SGPA System
+            Smart AKTU Academic ERP Portal &bull; SHA-256 Secured Role-Based Attendance &amp; SGPA System
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -2179,7 +2172,7 @@ if role == "Student":
             <div style="text-align:center; padding-bottom:10px;">
                 <h4 style="margin:0;">{student['name']}</h4>
                 <p style="margin:2px 0; color:{text_muted}; font-size:0.9rem;">Roll No: <b>{student['roll_no']}</b></p>
-                <p style="margin:2px 0; font-size:0.88rem;">{student['branch']} • <b>{student['section']}</b></p>
+                <p style="margin:2px 0; font-size:0.88rem;">{student['branch']} &bull; <b>{student['section']}</b></p>
                 <span style="background:{code_bg}; color:{accent_color}; padding:3px 10px; border-radius:12px; font-size:0.8rem; font-weight:700;">
                     {student['semester']}
                 </span>
@@ -2228,8 +2221,8 @@ if role == "Student":
     st.title("🎓 Smart AKTU CGPA, Credit & Attendance Manager")
     st.markdown(
         f'<p style="font-size:1.25rem; font-weight:500; color:{text_muted}; margin-top:-10px; margin-bottom:18px;">'
-        f'Welcome, <strong style="color:{text_main};">{student["name"]}</strong>  |  '
-        f'<span style="color:{accent_color}; font-weight:700;">{student["section"]}</span>  |  KCC Institute of Technology and Management'
+        f'Welcome, <strong style="color:{text_main};">{student["name"]}</strong> &nbsp;|&nbsp; '
+        f'<span style="color:{accent_color}; font-weight:700;">{student["section"]}</span> &nbsp;|&nbsp; KCC Institute of Technology and Management'
         f'</p>',
         unsafe_allow_html=True
     )
@@ -2404,7 +2397,7 @@ elif role == "Faculty":
     st.title("👨‍🏫 Faculty Attendance & Class Management Portal")
     st.markdown(
         f'<p style="font-size:1.2rem; font-weight:500; color:{text_muted}; margin-top:-10px; margin-bottom:18px;">'
-        f'Welcome, <strong style="color:{text_main};">{fac_info["name"]}</strong>  |  KCC Institute of Technology and Management'
+        f'Welcome, <strong style="color:{text_main};">{fac_info["name"]}</strong> &nbsp;|&nbsp; KCC Institute of Technology and Management'
         f'</p>',
         unsafe_allow_html=True
     )
@@ -2621,7 +2614,7 @@ elif role == "Admin":
     st.title("🛡️ KCC Smart AKTU ERP — Admin Control Panel")
     st.markdown(
         f'<p style="font-size:1.2rem; font-weight:500; color:{text_muted}; margin-top:-10px; margin-bottom:18px;">'
-        'Full Database Control • SHA-256 Protected Accounts, Students, Faculty Appointments & Analytics'
+        'Full Database Control &bull; SHA-256 Protected Accounts, Students, Faculty Appointments &amp; Analytics'
         '</p>',
         unsafe_allow_html=True
     )
