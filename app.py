@@ -3585,7 +3585,7 @@ elif role == "Admin":
         st.subheader("Student Directory & Enrollment (Sections B-2, B-3, B-4, B-6)")
         sec_view = st.selectbox("Filter Roster by Section", ["All Sections", "Section B-2", "Section B-3", "Section B-4", "Section B-6"], key="adm_st_sec_filter")
         students_df = read_df(
-            'SELECT id, roll_no AS "Roll No", name AS "Name", branch AS "Branch", section AS "Section", '•••••••• (SHA-256)' AS "Security", recovery_pin AS "Recovery PIN" FROM students ORDER BY section, roll_no',
+            '''SELECT id, roll_no AS "Roll No", name AS "Name", branch AS "Branch", section AS "Section", '•••••••• (SHA-256)' AS "Security", recovery_pin AS "Recovery PIN" FROM students ORDER BY section, roll_no''',
             conn
         )
         if sec_view != "All Sections":
@@ -3694,7 +3694,7 @@ elif role == "Admin":
 
     elif st.session_state.adm_page == "faculty":
         st.subheader("Faculty Roster & Section Appointments")
-        fac_df = read_df('SELECT id, faculty_code AS "Faculty ID", name AS "Name", department AS "Department", designation AS "Designation", created_at AS "Joined Date", '•••••••• (SHA-256)' AS "Security", recovery_pin AS "Recovery PIN" FROM faculty', conn)
+        fac_df = read_df('''SELECT id, faculty_code AS "Faculty ID", name AS "Name", department AS "Department", designation AS "Designation", created_at AS "Joined Date", '•••••••• (SHA-256)' AS "Security", recovery_pin AS "Recovery PIN" FROM faculty''', conn)
         st.markdown(render_clean_table(fac_df.drop(columns=["id"])), unsafe_allow_html=True)
 
         st.markdown("##### Current Section & Subject Appointments")
