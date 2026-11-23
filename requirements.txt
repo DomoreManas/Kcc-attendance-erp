@@ -3,3 +3,4 @@ pandas
 psycopg2-binary
 qrcode
 pillow
+python-docxpython-docx
