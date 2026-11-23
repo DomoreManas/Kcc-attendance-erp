@@ -1866,6 +1866,31 @@ def extract_text_from_upload(uploaded_file):
                     cells = [c.text.strip().replace("\n", " ") for c in row.cells]
                     lines.append(" | ".join(cells))
             return "\n".join(lines)
+        except ImportError:
+            import zipfile
+            import xml.etree.ElementTree as ET
+            try:
+                with zipfile.ZipFile(io.BytesIO(raw_bytes)) as zf:
+                    xml_bytes = zf.read("word/document.xml")
+                root = ET.fromstring(xml_bytes)
+                ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+                lines = []
+                for tr in root.findall(".//w:tr", ns):
+                    row_cells = []
+                    for tc in tr.findall(".//w:tc", ns):
+                        cell_txt = "".join(t.text or "" for t in tc.findall(".//w:t", ns)).strip()
+                        row_cells.append(cell_txt)
+                    if any(row_cells):
+                        lines.append(" | ".join(row_cells))
+                if not lines:
+                    for p in root.findall(".//w:p", ns):
+                        p_txt = "".join(t.text or "" for t in p.findall(".//w:t", ns)).strip()
+                        if p_txt:
+                            lines.append(p_txt)
+                return "\n".join(lines)
+            except Exception as exc:
+                st.error(f"Could not parse .docx archive: {exc}")
+                return ""
         except Exception as exc:
             st.error(f"Could not read .docx file: {exc}")
             return ""
