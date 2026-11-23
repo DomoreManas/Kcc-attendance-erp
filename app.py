@@ -1469,6 +1469,39 @@ def seed_semester_results(cur, conn):
                         conn.raw_conn.rollback()
 
 
+def ensure_timetable_tables(conn):
+    cur = conn.cursor()
+    for ddl in [
+        """
+        CREATE TABLE IF NOT EXISTS student_timetables (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            section TEXT NOT NULL,
+            day_code TEXT NOT NULL,
+            period_code TEXT NOT NULL,
+            subject_txt TEXT NOT NULL,
+            faculty_txt TEXT NOT NULL DEFAULT '',
+            UNIQUE(section, day_code, period_code)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS faculty_timetables (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            faculty_code TEXT NOT NULL,
+            day_code TEXT NOT NULL,
+            period_code TEXT NOT NULL,
+            slot_val TEXT NOT NULL,
+            UNIQUE(faculty_code, day_code, period_code)
+        )
+        """,
+    ]:
+        try:
+            cur.execute(ddl)
+            conn.commit()
+        except Exception:
+            if conn.is_pg:
+                conn.raw_conn.rollback()
+
+
 def init_db():
     conn = get_connection()
     cur = conn.cursor()
@@ -1582,27 +1615,6 @@ def init_db():
             result_status TEXT NOT NULL DEFAULT 'PASS'
         )
         """,
-        """
-        CREATE TABLE IF NOT EXISTS student_timetables (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            section TEXT NOT NULL,
-            day_code TEXT NOT NULL,
-            period_code TEXT NOT NULL,
-            subject_txt TEXT NOT NULL,
-            faculty_txt TEXT NOT NULL DEFAULT '',
-            UNIQUE(section, day_code, period_code)
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS faculty_timetables (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            faculty_code TEXT NOT NULL,
-            day_code TEXT NOT NULL,
-            period_code TEXT NOT NULL,
-            slot_val TEXT NOT NULL,
-            UNIQUE(faculty_code, day_code, period_code)
-        )
-        """,
     ]
 
     for stmt in ddl_statements:
@@ -1612,6 +1624,8 @@ def init_db():
         except Exception:
             if conn.is_pg:
                 conn.raw_conn.rollback()
+
+    ensure_timetable_tables(conn)
 
     for tbl in ["admin_settings", "students", "faculty"]:
         try:
@@ -1829,41 +1843,8 @@ def init_db():
     conn.close()
 
 
-def ensure_timetable_tables(conn):
-    cur = conn.cursor()
-    for ddl in [
-        """
-        CREATE TABLE IF NOT EXISTS student_timetables (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            section TEXT NOT NULL,
-            day_code TEXT NOT NULL,
-            period_code TEXT NOT NULL,
-            subject_txt TEXT NOT NULL,
-            faculty_txt TEXT NOT NULL DEFAULT '',
-            UNIQUE(section, day_code, period_code)
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS faculty_timetables (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            faculty_code TEXT NOT NULL,
-            day_code TEXT NOT NULL,
-            period_code TEXT NOT NULL,
-            slot_val TEXT NOT NULL,
-            UNIQUE(faculty_code, day_code, period_code)
-        )
-        """,
-    ]:
-        try:
-            cur.execute(ddl)
-            conn.commit()
-        except Exception:
-            if conn.is_pg:
-                conn.raw_conn.rollback()
-
-
 @st.cache_resource
-def ensure_db_initialized(schema_v: int = 2):
+def ensure_db_initialized(schema_v: int = 3):
     init_db()
     return True
 
@@ -2582,8 +2563,7 @@ def render_student_timetable_section(section_name):
 
 
 def _normalize_sec_code(val: str) -> str:
-    cleaned = re.sub(r"(?i)\bsection\b", "", str(val or "")).replace("-", "").replace(" ", "").strip().upper()
-    return cleaned
+    return re.sub(r"(?i)\bsection\b", "", str(val or "")).replace("-", "").replace(" ", "").strip().upper()
 
 
 def get_today_section_slots_from_grid(fac_tt, section_label, section_tt=None, fac_name="", subj_code=""):
@@ -2604,7 +2584,6 @@ def get_today_section_slots_from_grid(fac_tt, section_label, section_tt=None, fa
             if slot_str not in slots_found:
                 slots_found.append(slot_str)
 
-    # Also check section timetable if available so no scheduled slot is missed
     if not slots_found and section_tt:
         sec_day_slots = section_tt.get(today_code, [])
         fac_last = str(fac_name or "").split()[-1].lower()
@@ -2905,8 +2884,61 @@ def render_student_attendance_chart(summary_df, target_pct=75):
         st.markdown('<div style="margin-bottom:10px;"></div>', unsafe_allow_html=True)
 
 
+@st.fragment(run_every=5)
+def live_student_attendance_panel(student_id: int, section_name: str):
+    df_live = fetch_student_records(student_id)
+    if df_live.empty:
+        st.info("No subjects assigned to your profile yet. Contact your Admin.")
+        return
+
+    total_att = df_live["attended"].sum()
+    total_cls = df_live["total"].sum()
+    overall_pct = (total_att / total_cls * 100) if total_cls > 0 else 0.0
+    shortage_count = sum(1 for _, r in df_live.iterrows() if (r["total"] > 0 and (r["attended"] / r["total"]) < 0.75))
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Overall Attendance", f"{overall_pct:.2f}%", f"{total_att}/{total_cls} Classes")
+    c2.metric("AKTU Minimum Requirement", "75.00%", "Mandatory for End-Sem")
+    c3.metric("Subjects in Shortage", f"{shortage_count} Subject(s)", delta_color="inverse")
+
+    st.divider()
+
+    records = []
+    for _, row in df_live.iterrows():
+        pct, status, action = analyze_attendance(row["attended"], row["total"])
+        records.append({
+            "record_id": row["record_id"],
+            "Code": row["code"],
+            "Subject Name": row["name"],
+            "Attended": row["attended"],
+            "Total": row["total"],
+            "Percentage (%)": round(pct, 2),
+            "Status": status,
+            "Smart Recommendation": action
+        })
+    summary_df = pd.DataFrame(records)
+
+    hdr_col, self_btn_col = st.columns([4.8, 1.5])
+    with hdr_col:
+        st.markdown("#### Horizontal Attendance Bar Chart (75% Target Analysis)")
+    with self_btn_col:
+        self_lbl = "🔼 Close Self Attendance" if st.session_state.st_self_att_open else "📝 Self Attendance"
+        if st.button(self_lbl, key="st_self_att_toggle", width="stretch"):
+            st.session_state.st_self_att_open = not st.session_state.st_self_att_open
+            st.rerun()
+
+    if st.session_state.st_self_att_open:
+        render_student_self_attendance_manager(df_live)
+
+    render_student_attendance_chart(summary_df, target_pct=75)
+
+    st.divider()
+    st.markdown("#### Detailed Official Attendance Summary")
+    st.markdown(render_clean_table(summary_df.drop(columns=["record_id"])), unsafe_allow_html=True)
+
+
 # -------------------- ONE-TIME INITIALIZATION & TOP HEADER BAR --------------------
-ensure_db_initialized(2)
+ensure_db_initialized(3)
 render_top_header_bar()
 
 
@@ -3032,7 +3064,6 @@ role = user["role"]
 # =====================================================================
 if role == "Student":
     student = fetch_student_by_id(user["id"])
-    df = fetch_student_records(student["id"])
 
     with st.sidebar:
         st.markdown("### 🧑‍🎓 Student Profile")
@@ -3130,53 +3161,7 @@ if role == "Student":
 
     if st.session_state.st_page == "attendance":
         st.subheader(f"Subject-Wise Attendance ({student['section']})")
-        if df.empty:
-            st.info("No subjects assigned to your profile yet. Contact your Admin.")
-        else:
-            total_att = df["attended"].sum()
-            total_cls = df["total"].sum()
-            overall_pct = (total_att / total_cls * 100) if total_cls > 0 else 0.0
-            shortage_count = sum(1 for _, r in df.iterrows() if (r["total"] > 0 and (r["attended"] / r["total"]) < 0.75))
-
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Overall Attendance", f"{overall_pct:.2f}%", f"{total_att}/{total_cls} Classes")
-            c2.metric("AKTU Minimum Requirement", "75.00%", "Mandatory for End-Sem")
-            c3.metric("Subjects in Shortage", f"{shortage_count} Subject(s)", delta_color="inverse")
-
-            st.divider()
-
-            records = []
-            for _, row in df.iterrows():
-                pct, status, action = analyze_attendance(row["attended"], row["total"])
-                records.append({
-                    "record_id": row["record_id"],
-                    "Code": row["code"],
-                    "Subject Name": row["name"],
-                    "Attended": row["attended"],
-                    "Total": row["total"],
-                    "Percentage (%)": round(pct, 2),
-                    "Status": status,
-                    "Smart Recommendation": action
-                })
-            summary_df = pd.DataFrame(records)
-
-            hdr_col, self_btn_col = st.columns([4.8, 1.5])
-            with hdr_col:
-                st.markdown("#### Horizontal Attendance Bar Chart (75% Target Analysis)")
-            with self_btn_col:
-                self_lbl = "🔼 Close Self Attendance" if st.session_state.st_self_att_open else "📝 Self Attendance"
-                if st.button(self_lbl, key="st_self_att_toggle", width="stretch"):
-                    st.session_state.st_self_att_open = not st.session_state.st_self_att_open
-                    st.rerun()
-
-            if st.session_state.st_self_att_open:
-                render_student_self_attendance_manager(df)
-
-            render_student_attendance_chart(summary_df, target_pct=75)
-
-            st.divider()
-            st.markdown("#### Detailed Official Attendance Summary")
-            st.markdown(render_clean_table(summary_df.drop(columns=["record_id"])), unsafe_allow_html=True)
+        live_student_attendance_panel(student["id"], student["section"])
 
     elif st.session_state.st_page == "sgpa":
         st.subheader(f"My University Result — {student['name']} ({student['roll_no']})")
@@ -3229,6 +3214,10 @@ elif role == "Faculty":
         ORDER BY fa.section, sc.code
     """, conn, params=(user["id"],))
     eff_fac_tt = get_effective_faculty_timetable(fac_info["faculty_code"], conn)
+    sec_tt_cache = {
+        sec_n: get_effective_section_timetable(sec_n, conn)
+        for sec_n in assigned_df["section"].unique()
+    } if not assigned_df.empty else {}
     conn.close()
 
     with st.sidebar:
@@ -3253,7 +3242,13 @@ elif role == "Faculty":
             st.warning("No sections appointed yet.")
         else:
             for _, arow in assigned_df.iterrows():
-                t_day, t_slots = get_today_section_slots_from_grid(eff_fac_tt, arow["section"])
+                t_day, t_slots = get_today_section_slots_from_grid(
+                    eff_fac_tt,
+                    arow["section"],
+                    section_tt=sec_tt_cache.get(arow["section"]),
+                    fac_name=fac_info["name"],
+                    subj_code=arow["code"],
+                )
                 time_summary = ", ".join(t_slots) if t_slots else "Free today"
                 st.markdown(
                     f"- **{arow['section']}** — `{arow['code']}` ({arow['name']})<br>"
@@ -3590,7 +3585,7 @@ elif role == "Admin":
         st.subheader("Student Directory & Enrollment (Sections B-2, B-3, B-4, B-6)")
         sec_view = st.selectbox("Filter Roster by Section", ["All Sections", "Section B-2", "Section B-3", "Section B-4", "Section B-6"], key="adm_st_sec_filter")
         students_df = read_df(
-            'SELECT id, roll_no AS "Roll No", name AS "Name", branch AS "Branch", section AS "Section", \'•••••••• (SHA-256)\' AS "Security", recovery_pin AS "Recovery PIN" FROM students ORDER BY section, roll_no',
+            'SELECT id, roll_no AS "Roll No", name AS "Name", branch AS "Branch", section AS "Section", '•••••••• (SHA-256)' AS "Security", recovery_pin AS "Recovery PIN" FROM students ORDER BY section, roll_no',
             conn
         )
         if sec_view != "All Sections":
@@ -3699,7 +3694,7 @@ elif role == "Admin":
 
     elif st.session_state.adm_page == "faculty":
         st.subheader("Faculty Roster & Section Appointments")
-        fac_df = read_df('SELECT id, faculty_code AS "Faculty ID", name AS "Name", department AS "Department", designation AS "Designation", created_at AS "Joined Date", \'•••••••• (SHA-256)\' AS "Security", recovery_pin AS "Recovery PIN" FROM faculty', conn)
+        fac_df = read_df('SELECT id, faculty_code AS "Faculty ID", name AS "Name", department AS "Department", designation AS "Designation", created_at AS "Joined Date", '•••••••• (SHA-256)' AS "Security", recovery_pin AS "Recovery PIN" FROM faculty', conn)
         st.markdown(render_clean_table(fac_df.drop(columns=["id"])), unsafe_allow_html=True)
 
         st.markdown("##### Current Section & Subject Appointments")
